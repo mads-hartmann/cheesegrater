@@ -1,75 +1,15 @@
 # Installation
 
-Instructions for the initial install
+Instructions for the initial installation and bootstrapping of NixOS on the [hardware](hardware.md), including networking and SSH setup so that any further maintenance can be done from another machine.
 
 ## Prerequisites
 
-- A USB drive ≥ 8 GB (16 GB+ recommended)
-- A second machine (Mac or Linux) to prepare the USB
+- A bootable USB with the [NixOS Graphical ISO image](https://nixos.org/download/#graphical-iso-image) — [Ventoy](https://www.ventoy.net/en/index.html) is recommended
 - An ethernet cable — Wi-Fi (BCM943602CD) requires a driver not available during install
 
 ---
 
-## 1. Download the NixOS ISO
-
-Go to [nixos.org/download](https://nixos.org/download/) and download the **Graphical ISO image** for `x86_64`.
-
-The filename will look like: `nixos-graphical-25.11-x86_64-linux.iso`
-
----
-
-## 2. Prepare the bootable USB with Ventoy
-
-> **Note on Mac Pro EFI compatibility:** The Mac Pro 4,1/5,1 uses Apple's EFI firmware, which does not always cooperate with Ventoy's UEFI boot shim. If Ventoy fails to appear in the boot picker (step 4), fall back to writing the ISO directly — see the [Fallback](#fallback-write-iso-directly) section below.
-
-### Install Ventoy on the USB drive
-
-**On Linux:**
-
-```bash
-# Download and extract Ventoy (check https://github.com/ventoy/ventoy/releases for latest version)
-wget https://github.com/ventoy/ventoy/releases/download/v1.0.99/ventoy-1.0.99-linux.tar.gz
-tar -xzf ventoy-1.0.99-linux.tar.gz
-cd ventoy-1.0.99
-
-# Find your USB device (look for your drive size)
-lsblk
-
-# Install Ventoy with GPT partition table (required for EFI)
-sudo sh Ventoy2Disk.sh -i -g /dev/sdX   # replace sdX with your USB device
-```
-
-**On macOS:**
-
-```bash
-# Download and extract Ventoy
-curl -LO https://github.com/ventoy/ventoy/releases/download/v1.0.99/ventoy-1.0.99-linux.tar.gz
-tar -xzf ventoy-1.0.99-linux.tar.gz
-cd ventoy-1.0.99
-
-# Find your USB device
-diskutil list
-
-# Unmount the disk (but don't eject)
-diskutil unmountDisk /dev/diskN   # replace diskN with your USB disk
-
-# Install Ventoy
-sudo sh Ventoy2Disk.sh -i -g /dev/diskN
-```
-
-### Copy the NixOS ISO
-
-After Ventoy installs, the USB will have a large partition labelled `Ventoy`. Copy the ISO there:
-
-```bash
-cp nixos-graphical-25.11-x86_64-linux.iso /path/to/Ventoy/
-```
-
-That's it — no further steps needed. Ventoy will find the ISO automatically at boot.
-
----
-
-## 3. Boot from the USB
+## 1. Boot from the USB
 
 1. Plug the USB into the Mac Pro.
 2. Power on (or restart) and immediately hold **⌥ (Option/Alt)**.
@@ -81,7 +21,7 @@ The graphical installer will load. This can take a minute or two.
 
 ---
 
-## 4. Connect to the network
+## 2. Connect to the network
 
 Plug in ethernet before booting. The installer will bring up a wired connection automatically via DHCP.
 
@@ -93,7 +33,7 @@ ping -c 3 nixos.org
 
 ---
 
-## 5. Partition the disk
+## 3. Partition the disk
 
 The Samsung 970 EVO (via the Lycom PCIe adapter) will appear as an NVMe device. Identify it:
 
@@ -124,7 +64,7 @@ parted /dev/nvme0n1 -- mkpart swap linux-swap -8GB 100%
 
 ---
 
-## 6. Format the partitions
+## 4. Format the partitions
 
 ```bash
 # EFI partition
@@ -139,7 +79,7 @@ mkswap -L swap /dev/nvme0n1p3
 
 ---
 
-## 7. Mount and activate swap
+## 5. Mount and activate swap
 
 ```bash
 mount /dev/disk/by-label/nixos /mnt
@@ -152,7 +92,7 @@ swapon /dev/disk/by-label/swap
 
 ---
 
-## 8. Generate the initial configuration
+## 6. Generate the initial configuration
 
 ```bash
 nixos-generate-config --root /mnt
@@ -213,7 +153,7 @@ Save and exit (`Ctrl+O`, `Ctrl+X` in nano).
 
 ---
 
-## 9. Install
+## 7. Install
 
 ```bash
 nixos-install
@@ -229,7 +169,7 @@ Remove the USB drive when the machine powers off.
 
 ---
 
-## 10. First boot
+## 8. First boot
 
 The Mac Pro will boot directly into NixOS via systemd-boot. Log in with the user account you created.
 
@@ -239,25 +179,4 @@ Change your password immediately:
 passwd
 ```
 
----
 
-## Fallback: write ISO directly
-
-If Ventoy does not appear in the Mac Pro's boot picker, write the ISO directly to the USB instead.
-
-**On Linux:**
-
-```bash
-sudo dd if=nixos-graphical-25.11-x86_64-linux.iso of=/dev/sdX bs=4M status=progress oflag=sync
-```
-
-**On macOS:**
-
-```bash
-# Unmount the disk first
-diskutil unmountDisk /dev/diskN
-
-sudo dd if=nixos-graphical-25.11-x86_64-linux.iso of=/dev/rdiskN bs=4m
-```
-
-Then proceed from [step 3](#3-boot-from-the-usb) — in the boot picker the drive will appear as **EFI Boot**.
