@@ -1,6 +1,6 @@
 # Hardware
 
-Mac Pro 4,1 (2009) flashed to 5,1 firmware.
+This is a Mac Pro from 2009 that I bought used and then upgraded as much as I could - see [specifications](#specifications) and [notes](#notes) below for details.
 
 ## Specifications
 
@@ -15,7 +15,7 @@ Mac Pro 4,1 (2009) flashed to 5,1 firmware.
 
 ## Notes
 
-- The 4,1 → 5,1 firmware flash allows the machine to accept Westmere-class CPUs (e.g. X5690) and newer EFI features.
+- I flashed the firmware from 4,1 to 5,1 as it allows the machine to accept Westmere-class CPUs (e.g. X5690) and newer EFI features.
 - The Lycom DT-120 adapter fits an M.2 NVMe drive into a PCIe slot, since the Mac Pro 4,1/5,1 has no native M.2 support.
 - The ATI HD 4870 outputs via Mini DisplayPort and Dual-link DVI.
 - The BCM943602CD card provides native macOS-compatible Wi-Fi and Bluetooth; Linux support requires the `brcmfmac` driver.
