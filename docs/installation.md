@@ -175,6 +175,9 @@ Make sure the following are set (they should be auto-detected, but verify):
 boot.loader.systemd-boot.enable = true;
 boot.loader.efi.canTouchEfiVariables = true;
 
+# Disable PCIe gen2 negotiation — the Mac Pro 4,1/5,1 EFI can cause GPU hangs with it enabled
+boot.kernelParams = [ "radeon.pcie_gen2=0" ];
+
 # Set your hostname
 networking.hostName = "mac-pro";
 
@@ -193,6 +196,12 @@ users.users.yourname = {
 
 # Allow sudo for wheel group
 security.sudo.wheelNeedsPassword = true;
+
+# ATI HD 4870 (RV770) — uses the legacy radeon driver
+# hardware.radeon.enable pulls in the required linux-firmware blobs (RV770_pfp.bin etc.)
+# Without it the GPU boots but falls back to framebuffer-only mode (no hardware-accelerated 3D)
+hardware.radeon.enable = true;
+hardware.graphics.enable = true;
 
 # Enable a desktop environment (optional — remove if you want headless)
 services.xserver.enable = true;
