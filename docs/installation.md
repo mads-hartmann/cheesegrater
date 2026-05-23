@@ -6,16 +6,18 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 
 - A bootable USB with the [NixOS Graphical ISO image](https://nixos.org/download/#graphical-iso-image) — [Ventoy](https://www.ventoy.net/en/index.html) is recommended
 - An ethernet cable — Wi-Fi (BCM943602CD) requires a driver not available during install
+- Your SSH public key (e.g. `~/.ssh/id_ed25519.pub` from your other machine)
 
 ---
 
 ## 1. Boot from the USB
 
-1. Plug the USB into the Mac Pro.
-2. Power on (or restart) and immediately hold **⌥ (Option/Alt)**.
-3. The boot picker will appear. Select the drive labelled **EFI Boot** or **Ventoy**.
-4. In the Ventoy menu, select the NixOS ISO.
-5. In the NixOS boot menu, choose **NixOS Installer** (the default) and press Enter.
+1. Plug in the ethernet cable.
+2. Plug the USB into the Mac Pro.
+3. Power on (or restart) and immediately hold **⌥ (Option/Alt)**.
+4. The boot picker will appear. Select the drive labelled **EFI Boot** or **Ventoy**.
+5. In the Ventoy menu, select the NixOS ISO.
+6. In the NixOS boot menu, choose **NixOS Installer** (the default) and press Enter.
 
 The graphical installer will load. This can take a minute or two.
 
@@ -23,7 +25,7 @@ The graphical installer will load. This can take a minute or two.
 
 ## 2. Connect to the network
 
-Plug in ethernet before booting. The installer will bring up a wired connection automatically via DHCP.
+The installer will bring up the wired connection automatically via DHCP.
 
 Verify connectivity before proceeding:
 
@@ -92,61 +94,52 @@ swapon /dev/disk/by-label/swap
 
 ---
 
-## 6. Generate the initial configuration
+## 6. Configure
 
 ```bash
 nixos-generate-config --root /mnt
-```
-
-This creates two files:
-- `/mnt/etc/nixos/configuration.nix` — the main config you edit
-- `/mnt/etc/nixos/hardware-configuration.nix` — auto-detected hardware (don't edit this)
-
-Open the configuration for editing:
-
-```bash
 nano /mnt/etc/nixos/configuration.nix
 ```
 
-Make sure the following are set (they should be auto-detected, but verify):
+Replace the contents with the following, substituting your username and SSH public key:
 
 ```nix
-# Use systemd-boot (EFI bootloader)
-boot.loader.systemd-boot.enable = true;
-boot.loader.efi.canTouchEfiVariables = true;
+{ config, pkgs, ... }:
 
-# Disable PCIe gen2 negotiation — the Mac Pro 4,1/5,1 EFI can cause GPU hangs with it enabled
-boot.kernelParams = [ "radeon.pcie_gen2=0" ];
+{
+  imports = [ ./hardware-configuration.nix ];
 
-# Set your hostname
-networking.hostName = "mac-pro";
+  # Bootloader
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
 
-# Enable networking
-networking.networkmanager.enable = true;
+  # Disable PCIe gen2 negotiation — the Mac Pro 4,1/5,1 EFI can cause GPU hangs with it enabled
+  boot.kernelParams = [ "radeon.pcie_gen2=0" ];
 
-# Set your timezone
-time.timeZone = "Europe/Copenhagen";  # adjust to your timezone
+  networking.hostName = "mac-pro";
+  networking.networkmanager.enable = true;
 
-# Create your user account
-users.users.yourname = {
-  isNormalUser = true;
-  extraGroups = [ "wheel" "networkmanager" ];
-  initialPassword = "changeme";  # change after first login
-};
+  time.timeZone = "Europe/Copenhagen"; # adjust to your timezone
 
-# Allow sudo for wheel group
-security.sudo.wheelNeedsPassword = true;
+  # ATI HD 4870 (RV770) — requires firmware blobs for hardware acceleration
+  hardware.radeon.enable = true;
+  hardware.graphics.enable = true;
 
-# ATI HD 4870 (RV770) — uses the legacy radeon driver
-# hardware.radeon.enable pulls in the required linux-firmware blobs (RV770_pfp.bin etc.)
-# Without it the GPU boots but falls back to framebuffer-only mode (no hardware-accelerated 3D)
-hardware.radeon.enable = true;
-hardware.graphics.enable = true;
+  users.users.yourname = {         # replace with your username
+    isNormalUser = true;
+    extraGroups = [ "wheel" "networkmanager" ];
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAA... you@yourhost" # replace with your public key
+    ];
+  };
 
-# Enable a desktop environment (optional — remove if you want headless)
-services.xserver.enable = true;
-services.xserver.displayManager.gdm.enable = true;
-services.desktopManager.gnome.enable = true;
+  security.sudo.wheelNeedsPassword = true;
+
+  services.openssh = {
+    enable = true;
+    settings.PasswordAuthentication = false;
+  };
+}
 ```
 
 Save and exit (`Ctrl+O`, `Ctrl+X` in nano).
@@ -169,14 +162,12 @@ Remove the USB drive when the machine powers off.
 
 ---
 
-## 8. First boot
+## 8. Verify SSH access
 
-The Mac Pro will boot directly into NixOS via systemd-boot. Log in with the user account you created.
-
-Change your password immediately:
+Once the machine has booted, find its IP address from your router, then from your other machine:
 
 ```bash
-passwd
+ssh yourname@<ip-address>
 ```
 
-
+If you can log in, the installation is complete and the machine is ready for remote maintenance.
