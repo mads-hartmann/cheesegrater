@@ -4,7 +4,7 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 
 ## Prerequisites
 
-- A bootable USB with the [NixOS Graphical ISO image](https://nixos.org/download/#graphical-iso-image) — [Ventoy](https://www.ventoy.net/en/index.html) is recommended
+- A bootable USB with the NixOS Minimal ISO — see [prerequisites.md](prerequisites.md) for instructions.
 - An ethernet cable — Wi-Fi (BCM943602CD) requires a driver not available during install
 - Your SSH public key (e.g. `~/.ssh/id_ed25519.pub` from your other machine)
 
@@ -16,10 +16,10 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 2. Plug the USB into the Mac Pro.
 3. Power on (or restart) and immediately hold **⌥ (Option/Alt)**.
 4. The boot picker will appear. Select the drive labelled **EFI Boot** or **Ventoy**.
-5. In the Ventoy menu, select the NixOS ISO.
+5. In the Ventoy menu, select the NixOS ISO. When asked to choose a boot mode, select **GRUB2** — normal mode hangs with "Not a Secure Boot Platform 14" on the Mac Pro 4,1/5,1 EFI firmware.
 6. In the NixOS boot menu, choose **NixOS Installer** (the default) and press Enter.
 
-The graphical installer will load. This can take a minute or two.
+The minimal installer will drop you into a terminal. This can take a minute or two.
 
 ---
 
@@ -229,3 +229,17 @@ If it works, commit. If it breaks, either revert the file and rebuild, or use Ni
 ```bash
 sudo nixos-rebuild switch --rollback
 ```
+
+---
+
+## Troubleshooting
+
+### Kernel panic when booting from USB
+
+Using Ventoy to boot the NixOS ISO on the Mac Pro 4,1/5,1 results in a fatal kernel panic:
+
+```
+Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100
+```
+
+Flash the ISO directly to the USB stick instead — see [prerequisites.md](prerequisites.md).

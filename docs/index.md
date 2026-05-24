@@ -7,4 +7,5 @@ Documentation for running NixOS on a Mac Pro 4,1 flashed to 5,1.
 | File | Description |
 |------|-------------|
 | [hardware.md](hardware.md) | Hardware specifications and component notes |
-| [installation.md](installation.md) | Creating a bootable USB and installing NixOS |
+| [prerequisites.md](prerequisites.md) | Creating a bootable USB |
+| [installation.md](installation.md) | Installing NixOS |
