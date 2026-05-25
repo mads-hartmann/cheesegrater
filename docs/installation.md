@@ -15,9 +15,8 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 1. Plug in the ethernet cable.
 2. Plug the USB into the Mac Pro.
 3. Power on (or restart) and immediately hold **⌥ (Option/Alt)**.
-4. The boot picker will appear. Select the drive labelled **EFI Boot** or **Ventoy**.
-5. In the Ventoy menu, select the NixOS ISO. When asked to choose a boot mode, select **GRUB2** — normal mode hangs with "Not a Secure Boot Platform 14" on the Mac Pro 4,1/5,1 EFI firmware.
-6. In the NixOS boot menu, choose **NixOS Installer** (the default) and press Enter.
+4. The boot picker will appear. Select the drive labelled **EFI Boot**.
+5. In the NixOS boot menu, run the installer with `nomodeset`.[^nomodeset]
 
 The minimal installer will drop you into a terminal. This can take a minute or two.
 
@@ -236,10 +235,12 @@ sudo nixos-rebuild switch --rollback
 
 ### Kernel panic when booting from USB
 
-Using Ventoy to boot the NixOS ISO on the Mac Pro 4,1/5,1 results in a fatal kernel panic:
+If the USB was not flashed directly (e.g. using Ventoy), the Mac Pro 4,1/5,1 may fail with a fatal kernel panic:
 
 ```
 Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100
 ```
 
-Flash the ISO directly to the USB stick instead — see [prerequisites.md](prerequisites.md).
+Ensure the ISO is flashed directly to the USB stick — see [prerequisites.md](prerequisites.md).
+
+[^nomodeset]: `nomodeset` prevents the kernel from loading the `radeon` DRM driver and switching display modes during boot. Without it, the ATI HD 4870 blanks the screen at stage 2 and the installer never becomes visible. With it, the installer uses the basic EFI framebuffer instead of the kernel driver taking over. `nomodeset` is only needed for the install environment, not the final system configuration.
