@@ -1,5 +1,19 @@
 # Prerequisites
 
+## Generate an SSH key
+
+You'll need an SSH key pair to log into the machine after installation. If you already have one (e.g. `~/.ssh/id_ed25519`), you can skip this step.
+
+Generate a new key:
+
+```bash
+ssh-keygen -t ed25519 -C "your@email.com"
+```
+
+Accept the default path (`~/.ssh/id_ed25519`) and set a passphrase when prompted. The public key at `~/.ssh/id_ed25519.pub` is what you'll paste into the NixOS configuration during installation.
+
+---
+
 ## Create a bootable USB
 
 Download the [NixOS Minimal ISO](https://nixos.org/download/#minimal-iso-image).

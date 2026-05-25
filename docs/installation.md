@@ -46,35 +46,68 @@ It will likely be `/dev/nvme0n1`. All commands below assume this — adjust if y
 
 > **Warning:** The following will erase everything on the drive.
 
+Switch to a root shell to avoid prefixing every command with `sudo`:
+
 ```bash
 sudo -i
+```
 
-# Create a GPT partition table
+A partition table[^partition-table] tells the OS how the disk is divided up. GPT (GUID Partition Table)[^gpt] is the modern standard and required for EFI[^efi] boot:
+
+```bash
 parted /dev/nvme0n1 -- mklabel gpt
+```
 
-# EFI boot partition (512 MB)
+The EFI System Partition (ESP) is a small FAT32 volume the firmware reads at boot to find the bootloader. The partition starts at 1MB rather than the beginning of the disk to ensure proper alignment on modern drives.[^alignment] 512 MB is more than enough for the bootloader:
+
+```bash
 parted /dev/nvme0n1 -- mkpart ESP fat32 1MB 512MB
+```
+
+Set the `esp` flag so the firmware recognises this partition as the ESP:
+
+```bash
 parted /dev/nvme0n1 -- set 1 esp on
+```
 
-# Root partition (everything except the last 8 GB)
+The root partition holds the entire OS and all data, formatted as ext4[^ext4]. We stop 8 GB short of the end of the disk to leave room for swap:
+
+```bash
 parted /dev/nvme0n1 -- mkpart root ext4 512MB -8GB
+```
 
-# Swap partition (last 8 GB)
+Swap[^swap] is disk space the kernel uses as overflow when RAM is full:
+
+```bash
 parted /dev/nvme0n1 -- mkpart swap linux-swap -8GB 100%
 ```
+
+[^partition-table]: A partition table is metadata at the start of a disk that describes how it is divided into partitions — discrete regions each formatted and used independently.
+[^alignment]: Modern drives perform best when partitions start on 4KB boundaries. Starting at 1MB (rather than sector 1) guarantees alignment regardless of the drive's physical sector size.
+[^gpt]: GPT replaced the older MBR (Master Boot Record) standard. MBR has a 2 TB disk size limit and supports at most 4 primary partitions; GPT has neither restriction.
+[^efi]: EFI (Extensible Firmware Interface) is the firmware standard on modern machines that handles the initial boot process before handing off to the OS bootloader.
+[^ext4]: ext4 (fourth extended filesystem) is the standard Linux filesystem. It's mature, well-supported, and a safe default for a root partition.
+[^swap]: Swap is disk space reserved for the kernel to move memory pages to when physical RAM is exhausted. It prevents out-of-memory crashes at the cost of speed.
 
 ---
 
 ## 4. Format the partitions
 
+Format the EFI partition as FAT32 and label it `boot`. FAT32 is required by the EFI specification — the firmware expects to read this partition directly:
+
 ```bash
-# EFI partition
 mkfs.fat -F 32 -n boot /dev/nvme0n1p1
+```
 
-# Root partition
+Format the root partition as ext4 and label it `nixos`. The label is used to mount it by name rather than by device path:
+
+```bash
 mkfs.ext4 -L nixos /dev/nvme0n1p2
+```
 
-# Swap
+Initialise the swap partition and label it `swap`:
+
+```bash
 mkswap -L swap /dev/nvme0n1p3
 ```
 
@@ -82,12 +115,22 @@ mkswap -L swap /dev/nvme0n1p3
 
 ## 5. Mount and activate swap
 
+Mount the root partition at `/mnt`. The NixOS installer expects the target system to be rooted here:
+
 ```bash
 mount /dev/disk/by-label/nixos /mnt
+```
 
+Create the mount point for the EFI partition, then mount it. The `umask=077` restricts permissions so only root can read the bootloader files:
+
+```bash
 mkdir -p /mnt/boot
 mount -o umask=077 /dev/disk/by-label/boot /mnt/boot
+```
 
+Activate the swap partition so the installer can use it if needed:
+
+```bash
 swapon /dev/disk/by-label/swap
 ```
 
@@ -95,8 +138,15 @@ swapon /dev/disk/by-label/swap
 
 ## 6. Configure
 
+Scan the mounted system and generate a base NixOS configuration, including a `hardware-configuration.nix` that reflects the detected disk layout and hardware:
+
 ```bash
 nixos-generate-config --root /mnt
+```
+
+Open the main configuration file for editing:
+
+```bash
 nano /mnt/etc/nixos/configuration.nix
 ```
 
