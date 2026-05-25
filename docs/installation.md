@@ -162,17 +162,17 @@ Replace the contents with the following, substituting your username and SSH publ
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Disable PCIe gen2 negotiation — the Mac Pro 4,1/5,1 EFI can cause GPU hangs with it enabled
-  boot.kernelParams = [ "radeon.pcie_gen2=0" ];
+  # nomodeset prevents the radeon driver from taking over the display at boot, which causes a black screen on this hardware
+  # radeon.pcie_gen2=0 disables PCIe gen2 negotiation — the Mac Pro 4,1/5,1 EFI can cause GPU hangs with it enabled
+  boot.kernelParams = [ "nomodeset" "radeon.pcie_gen2=0" ];
 
   networking.hostName = "mac-pro";
   networking.networkmanager.enable = true;
 
   time.timeZone = "Europe/Copenhagen"; # adjust to your timezone
 
-  # ATI HD 4870 (RV770) — requires firmware blobs for hardware acceleration
-  hardware.radeon.enable = true;
   hardware.graphics.enable = true;
+  services.xserver.videoDrivers = [ "radeon" ]; # ATI HD 4870 (RV770)
 
   users.users.yourname = {         # replace with your username
     isNormalUser = true;
@@ -197,11 +197,13 @@ Save and exit (`Ctrl+O`, `Ctrl+X` in nano).
 
 ## 7. Install
 
+Build and install the system into `/mnt` based on the configuration written in the previous step. This will download and install all packages, so it may take a while depending on your connection:
+
 ```bash
 nixos-install
 ```
 
-You will be prompted to set a root password at the end. Set one, then reboot:
+You will be prompted to set a root password at the end. Set one, then reboot to boot into the installed system:
 
 ```bash
 reboot
