@@ -177,6 +177,7 @@ Replace the contents with the following, substituting your username and SSH publ
   users.users.yourname = {         # replace with your username
     isNormalUser = true;
     extraGroups = [ "wheel" "networkmanager" ];
+    initialPassword = "changeme";  # change this on first login with `passwd`
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAA... you@yourhost" # replace with your public key
     ];
@@ -213,15 +214,21 @@ Remove the USB drive when the machine powers off.
 
 ---
 
-## 8. Verify SSH access
+## 8. SSH in & set password
 
-Once the machine has booted, find its IP address from your router, then from your other machine:
+Once the machine has booted, find its IP address from your router, then SSH in using the initial password (`changeme`) from your other machine:
 
 ```bash
 ssh yourname@<ip-address>
 ```
 
-If you can log in, the installation is complete and the machine is ready for remote maintenance.
+Immediately replace the initial password:
+
+```bash
+sudo passwd yourname
+```
+
+The machine is now ready for remote maintenance.
 
 ---
 
