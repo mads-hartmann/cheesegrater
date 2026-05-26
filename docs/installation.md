@@ -8,7 +8,6 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 - An ethernet cable — Wi-Fi (BCM943602CD) requires a driver not available during install
 - Your SSH public key (e.g. `~/.ssh/id_ed25519.pub` from your other machine)
 
----
 
 ## 1. Boot from the USB
 
@@ -20,7 +19,6 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 
 The minimal installer will drop you into a terminal. This can take a minute or two.
 
----
 
 ## 2. Connect to the network
 
@@ -32,7 +30,6 @@ Verify connectivity before proceeding:
 ping -c 3 nixos.org
 ```
 
----
 
 ## 3. Partition the disk
 
@@ -89,7 +86,6 @@ parted /dev/nvme0n1 -- mkpart swap linux-swap -8GB 100%
 [^ext4]: ext4 (fourth extended filesystem) is the standard Linux filesystem. It's mature, well-supported, and a safe default for a root partition.
 [^swap]: Swap is disk space reserved for the kernel to move memory pages to when physical RAM is exhausted. It prevents out-of-memory crashes at the cost of speed.
 
----
 
 ## 4. Format the partitions
 
@@ -111,7 +107,6 @@ Initialise the swap partition and label it `swap`:
 mkswap -L swap /dev/nvme0n1p3
 ```
 
----
 
 ## 5. Mount and activate swap
 
@@ -134,7 +129,6 @@ Activate the swap partition so the installer can use it if needed:
 swapon /dev/disk/by-label/swap
 ```
 
----
 
 ## 6. Configure
 
@@ -194,7 +188,6 @@ Replace the contents with the following, substituting your username and SSH publ
 
 Save and exit (`Ctrl+O`, `Ctrl+X` in nano).
 
----
 
 ## 7. Install
 
@@ -212,7 +205,6 @@ reboot
 
 Remove the USB drive when the machine powers off.
 
----
 
 ## 8. SSH in & set password
 
@@ -228,67 +220,8 @@ Immediately replace the initial password:
 sudo passwd yourname
 ```
 
-The machine is now ready for remote maintenance.
+The machine is now ready for remote maintenance. See [configuration-and-maintenance.md](configuration-and-maintenance.md) for how to store the configuration in git and iterate on it going forward.
 
----
-
-## 9. Store configuration in git
-
-The generated configuration lives in `/etc/nixos/`. Rather than editing it there directly, keep it in this repo and symlink it — that way you can iterate as a normal user, commit changes, and roll back if something breaks.
-
-### First-time setup
-
-Clone this repo on the machine:
-
-```bash
-git clone git@github.com:mads-hartmann/cheesegrater.git ~/cheesegrater
-mkdir -p ~/cheesegrater/nixos
-```
-
-Copy the generated files into the repo:
-
-```bash
-cp /etc/nixos/configuration.nix ~/cheesegrater/nixos/
-cp /etc/nixos/hardware-configuration.nix ~/cheesegrater/nixos/
-```
-
-Replace the originals with symlinks:
-
-```bash
-sudo ln -sf ~/cheesegrater/nixos/configuration.nix /etc/nixos/configuration.nix
-sudo ln -sf ~/cheesegrater/nixos/hardware-configuration.nix /etc/nixos/hardware-configuration.nix
-```
-
-Verify the system still builds cleanly:
-
-```bash
-sudo nixos-rebuild switch
-```
-
-Commit and push:
-
-```bash
-cd ~/cheesegrater
-git add nixos/
-git commit -m "add initial nixos configuration"
-git push
-```
-
-### Iterating
-
-Edit files under `~/cheesegrater/nixos/` as your normal user, then apply:
-
-```bash
-sudo nixos-rebuild switch
-```
-
-If it works, commit. If it breaks, either revert the file and rebuild, or use NixOS's built-in generation rollback:
-
-```bash
-sudo nixos-rebuild switch --rollback
-```
-
----
 
 ## Troubleshooting
 

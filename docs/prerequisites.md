@@ -12,7 +12,6 @@ ssh-keygen -t ed25519 -C "your@email.com"
 
 Accept the default path (`~/.ssh/id_ed25519`) and set a passphrase when prompted. The public key at `~/.ssh/id_ed25519.pub` is what you'll paste into the NixOS configuration during installation.
 
----
 
 ## Create a bootable USB
 
