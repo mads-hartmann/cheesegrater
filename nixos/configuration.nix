@@ -69,6 +69,7 @@
     extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
     packages = with pkgs; [
       tree
+      nodejs # provides npm, needed to install Pi (npm install -g @pi-dev/coding-agent)
     ];
     initialPassword = "changeme";
     openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoS4/ZK8J3cMRtvwBRP91/dM3tujKFuywiPtWK1rkjY hello@mads-hartmann.com" ];
@@ -84,10 +85,9 @@
 
   # List packages installed in system profile.
   # You can use https://search.nixos.org/ to find more packages (and options).
-  # environment.systemPackages = with pkgs; [
-  #   vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #   wget
-  # ];
+  environment.systemPackages = with pkgs; [
+    git
+  ];
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.

@@ -6,6 +6,21 @@ The generated configuration lives in `/etc/nixos/`. Rather than editing it there
 
 ### First-time setup
 
+Install git (not available by default on a fresh NixOS install):
+
+```bash
+nix-env -iA nixos.git
+```
+
+> **Note:** `nix-env` installs into the current user's profile (`~/.nix-profile`). The installation survives reboots but is user-scoped and not part of the system configuration — so git won't be available to other users or after a fresh install. Once the repo is cloned and the NixOS configuration is in place, add git to `environment.systemPackages` in `nixos/configuration.nix` and run `sudo nixos-rebuild switch`. After that, `nix-env` git can be removed (`nix-env -e git`) since the system will provide it.
+
+Configure your identity (required to commit):
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
 Clone this repo on the machine:
 
 ```bash
