@@ -69,7 +69,7 @@
     extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
     packages = with pkgs; [
       tree
-      nodejs # provides npm; Pi is installed separately: npm install -g @earendil-works/pi-coding-agent
+      nodejs
     ];
     initialPassword = "changeme";
     openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoS4/ZK8J3cMRtvwBRP91/dM3tujKFuywiPtWK1rkjY hello@mads-hartmann.com" ];
