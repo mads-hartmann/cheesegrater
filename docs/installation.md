@@ -2,12 +2,13 @@
 
 Instructions for the initial installation and bootstrapping of NixOS on the [hardware](hardware.md), including networking and SSH setup so that any further maintenance can be done from another machine.
 
+At the end of this file, my NixOS configuration from `./nixos` will cloned and applied on the host; any commits to main will trigger a pull-based deploy of the latest configuration.
+
 ## Prerequisites
 
 - A bootable USB with the NixOS Minimal ISO — see [prerequisites.md](prerequisites.md) for instructions.
 - An ethernet cable — Wi-Fi (BCM943602CD) requires a driver not available during install
 - Your SSH public key (e.g. `~/.ssh/id_ed25519.pub` from your other machine)
-
 
 ## 1. Boot from the USB
 
@@ -19,7 +20,6 @@ Instructions for the initial installation and bootstrapping of NixOS on the [har
 
 The minimal installer will drop you into a terminal. This can take a minute or two.
 
-
 ## 2. Connect to the network
 
 The installer will bring up the wired connection automatically via DHCP.
@@ -29,7 +29,6 @@ Verify connectivity before proceeding:
 ```bash
 ping -c 3 nixos.org
 ```
-
 
 ## 3. Partition the disk
 
@@ -107,7 +106,6 @@ Initialise the swap partition and label it `swap`:
 mkswap -L swap /dev/nvme0n1p3
 ```
 
-
 ## 5. Mount and activate swap
 
 Mount the root partition at `/mnt`. The NixOS installer expects the target system to be rooted here:
@@ -128,7 +126,6 @@ Activate the swap partition so the installer can use it if needed:
 ```bash
 swapon /dev/disk/by-label/swap
 ```
-
 
 ## 6. Configure
 
@@ -183,11 +180,14 @@ Replace the contents with the following, substituting your username and SSH publ
     enable = true;
     settings.PasswordAuthentication = false;
   };
+
+  environment.systemPackages = with pkgs; [ git ];
+
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
 }
 ```
 
 Save and exit (`Ctrl+O`, `Ctrl+X` in nano).
-
 
 ## 7. Install
 
@@ -205,7 +205,6 @@ reboot
 
 Remove the USB drive when the machine powers off.
 
-
 ## 8. SSH in & set password
 
 Once the machine has booted, find its IP address from your router, then SSH in using the initial password (`changeme`) from your other machine:
@@ -222,6 +221,31 @@ sudo passwd yourname
 
 The machine is now ready for remote maintenance. See [configuration-and-maintenance.md](configuration-and-maintenance.md) for how to store the configuration in git and iterate on it going forward.
 
+## 9. Clone and apply configuration in this repository
+
+The final part of bootstrapping the system is to clone this repository and apply the configuration in `./nixos`.
+
+Configure your identity (required to commit):
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+Clone this repo:
+
+```bash
+git clone git@github.com:mads-hartmann/cheesegrater.git ~/cheesegrater
+```
+
+Apply the configuration for the first time:
+
+```bash
+cd ~/cheesegrater
+sudo nixos-rebuild switch --flake .#cheesegrater
+```
+
+Now, every push to main will be automatically applied going forward, see [./deployment](./deployment.md) for details.
 
 ## Troubleshooting
 
