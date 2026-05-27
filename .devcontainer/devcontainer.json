@@ -1,0 +1,12 @@
+{
+	"name": "cheesegrater",
+	"build": {
+		"context": ".",
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/nix": {
+			"packages": "nixpkgs#nixfmt-rfc-style nixpkgs#statix"
+		}
+	}
+}
