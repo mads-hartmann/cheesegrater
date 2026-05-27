@@ -28,17 +28,6 @@ cheesegrater    ←  systemd timer polls every 5 min ←
   4. Writes the new tag to the state file on success.
 - A systemd timer fires every 5 minutes (with up to 1 minute of random jitter).
 
-## First-time bootstrap
-
-The auto-upgrade module is part of the configuration, so it activates itself on the first manual apply:
-
-```bash
-cd ~/cheesegrater
-sudo nixos-rebuild switch --flake .#cheesegrater
-```
-
-After that, all future deployments happen automatically on push to `main`.
-
 ## Monitoring
 
 Check the last run:
