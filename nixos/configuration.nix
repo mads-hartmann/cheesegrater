@@ -75,6 +75,12 @@
     openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoS4/ZK8J3cMRtvwBRP91/dM3tujKFuywiPtWK1rkjY hello@mads-hartmann.com" ];
   };
 
+  # Disable sleep/suspend/hibernate
+  systemd.targets.sleep.enable = false;
+  systemd.targets.suspend.enable = false;
+  systemd.targets.hibernate.enable = false;
+  systemd.targets.hybrid-sleep.enable = false;
+
   # Enable OpenSSH daemon.
   services.openssh = {
     enable = true;
