@@ -99,6 +99,11 @@
     IdleAction = "ignore";
   };
 
+  services.affineur = {
+    enable = true;
+    port = 8080;
+  };
+
   # programs.firefox.enable = true;
 
   # List packages installed in system profile.

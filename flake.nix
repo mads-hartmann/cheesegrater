@@ -15,13 +15,20 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_2;
     in
     {
+      packages.${system}.affineur = ocamlPackages.callPackage ./tools/affineur/package.nix {
+        inherit self;
+      };
+
       nixosConfigurations.cheesegrater = nixpkgs.lib.nixosSystem {
         inherit system;
+        specialArgs = { inherit self; };
         modules = [
           ./nixos/configuration.nix
           ./nixos/hardware-configuration.nix
+          ./nixos/modules/affineur.nix
         ];
       };
 
