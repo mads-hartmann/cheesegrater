@@ -1,0 +1,16 @@
+(rule
+ (targets version.ml)
+ (action
+  (with-stdout-to
+   version.ml
+   (echo "let version = \"%{env:VERSION=dev}\""))))
+
+(executable
+ (name main)
+ (public_name affineur)
+ (package affineur)
+ (libraries
+  async
+  core
+  cohttp-async
+  yojson))
