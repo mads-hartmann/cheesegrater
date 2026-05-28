@@ -1,0 +1,3 @@
+# repeated_keys (W20) is a common NixOS idiom for setting nested options
+# (e.g. boot.loader.* and boot.kernelParams) and is not a real issue here.
+disabled = ["repeated_keys"]

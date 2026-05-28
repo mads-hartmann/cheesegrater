@@ -2,19 +2,27 @@
 # your system. Help is available in the configuration.nix(5) man page, on
 # https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
-  imports =
-    [ ./hardware-configuration.nix
-      ./modules/auto-upgrade.nix
-    ];
+  imports = [
+    # Include the results of the hardware scan.
+    ./hardware-configuration.nix
+  ];
 
   # Use the systemd-boot EFI boot loader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  boot.kernelParams = [ "nomodeset" "radeon.pcie_gen2=0" ];
+  boot.kernelParams = [
+    "nomodeset"
+    "radeon.pcie_gen2=0"
+  ];
 
   networking.hostName = "cheesegrater";
 
@@ -25,7 +33,7 @@
   time.timeZone = "Europe/Copenhagen";
 
   hardware.graphics.enable = true;
-  services.xserver.videoDrivers = [ "radeon" ]; 
+  services.xserver.videoDrivers = [ "radeon" ];
 
   # Configure network proxy if necessary
   # networking.proxy.default = "http://user:password@proxy:port/";
@@ -41,9 +49,6 @@
 
   # Enable the X11 windowing system.
   # services.xserver.enable = true;
-
-
-  
 
   # Configure keymap in X11
   # services.xserver.xkb.layout = "us";
@@ -63,29 +68,25 @@
   # Enable touchpad support (enabled default in most desktopManager).
   # services.libinput.enable = true;
 
-  # Define a user account. Don't forget to set a password with ‘passwd’.
+  # Define a user account. Don't forget to set a password with 'passwd'.
   users.users.mads = {
     isNormalUser = true;
-    extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
+    extraGroups = [ "wheel" ]; # Enable 'sudo' for the user.
     packages = with pkgs; [
       tree
       nodejs
     ];
     initialPassword = "changeme";
-    openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoS4/ZK8J3cMRtvwBRP91/dM3tujKFuywiPtWK1rkjY hello@mads-hartmann.com" ];
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoS4/ZK8J3cMRtvwBRP91/dM3tujKFuywiPtWK1rkjY hello@mads-hartmann.com"
+    ];
   };
-
-  # Disable sleep/suspend/hibernate
-  systemd.targets.sleep.enable = false;
-  systemd.targets.suspend.enable = false;
-  systemd.targets.hibernate.enable = false;
-  systemd.targets.hybrid-sleep.enable = false;
 
   # Enable OpenSSH daemon.
   services.openssh = {
     enable = true;
     settings.PasswordAuthentication = false;
-  }; 
+  };
 
   # programs.firefox.enable = true;
 
@@ -93,7 +94,6 @@
   # You can use https://search.nixos.org/ to find more packages (and options).
   environment.systemPackages = with pkgs; [
     git
-    htop
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
@@ -138,7 +138,5 @@
   #
   # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
   system.stateVersion = "25.11"; # Did you read the comment?
-
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
 }

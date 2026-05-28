@@ -5,7 +5,12 @@
 #
 # The machine needs outbound HTTPS to github.com and raw.githubusercontent.com.
 # No inbound access or deploy keys are required.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   repo = "mads-hartmann/cheesegrater";

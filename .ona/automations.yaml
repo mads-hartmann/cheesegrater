@@ -1,0 +1,9 @@
+tasks:
+  install-pre-commit-hook:
+    name: Install pre-commit hook
+    description: Locks the git-hooks.nix flake input and installs the pre-commit hook via nix develop.
+    command: |
+      nix flake update git-hooks
+      nix develop --command true
+    triggeredBy:
+      - postDevcontainerStart

@@ -1,0 +1,13 @@
+{
+	"name": "cheesegrater",
+	"build": {
+		"context": ".",
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/nix": {
+			"multiUser": false,
+			"extraNixConfig": "experimental-features = nix-command flakes"
+		}
+	}
+}
