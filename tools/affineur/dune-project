@@ -3,3 +3,6 @@
 (name affineur)
 
 (generate_opam_files false)
+
+(package
+ (name affineur))
