@@ -6,7 +6,8 @@
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/nix": {
-			"packages": "nixpkgs#nixfmt-rfc-style nixpkgs#statix"
+			"multiUser": false,
+			"extraNixConfig": "experimental-features = nix-command flakes"
 		}
 	}
 }
