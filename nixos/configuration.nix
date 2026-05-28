@@ -88,6 +88,19 @@
     settings.PasswordAuthentication = false;
   };
 
+  # Headless machine — never suspend, sleep, or power off due to inactivity
+  # or local seat events (power button, lid). Managed exclusively over SSH.
+  services.logind = {
+    extraConfig = ''
+      HandlePowerKey=ignore
+      HandleSuspendKey=ignore
+      HandleHibernateKey=ignore
+      HandleLidSwitch=ignore
+      HandleLidSwitchExternalPower=ignore
+      IdleAction=ignore
+    '';
+  };
+
   # programs.firefox.enable = true;
 
   # List packages installed in system profile.
