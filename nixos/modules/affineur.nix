@@ -33,7 +33,7 @@ in
       };
 
       serviceConfig = {
-        ExecStart = "${affineur}/bin/main";
+        ExecStart = "${affineur}/bin/affineur";
         Restart = "on-failure";
         RestartSec = "5s";
         DynamicUser = true;
