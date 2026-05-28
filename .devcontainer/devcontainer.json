@@ -1,12 +1,9 @@
 {
 	"name": "cheesegrater",
-	"build": {
-		"context": ".",
-		"dockerfile": "Dockerfile"
-	},
+	"image": "mcr.microsoft.com/devcontainers/base:2.0.4-noble",
 	"features": {
 		"ghcr.io/devcontainers/features/nix": {
-			"multiUser": false,
+			"multiUser": true,
 			"extraNixConfig": "experimental-features = nix-command flakes"
 		}
 	}

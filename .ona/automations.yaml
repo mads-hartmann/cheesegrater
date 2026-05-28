@@ -7,3 +7,11 @@ tasks:
       nix develop --command true
     triggeredBy:
       - postDevcontainerStart
+
+  check:
+    name: Nix flake check
+    description: Run nix flake check to validate the NixOS configuration and pre-commit hooks.
+    command: |
+      nix flake check
+    triggeredBy:
+      - manual
