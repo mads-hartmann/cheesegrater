@@ -22,6 +22,8 @@ let js_response body =
   Server.respond_string ~status:`OK ~headers body
 ;;
 
+let json_escape s = String.substr_replace_all s ~pattern:{|"|} ~with_:{|\"|}
+
 let handle_api_commits (source : Git.t) =
   let%bind last_pulled = source.last_pulled () in
   let%bind commits_result = source.recent_commits () in
@@ -32,8 +34,7 @@ let handle_api_commits (source : Git.t) =
   | Ok commits ->
     let commits_json =
       List.map commits ~f:(fun { Git.sha; message } ->
-        let message = String.substr_replace_all message ~pattern:{|"|} ~with_:{|\"|}  in
-        Printf.sprintf {|{"sha":"%s","message":"%s"}|} sha message)
+        Printf.sprintf {|{"sha":"%s","message":"%s"}|} sha (json_escape message))
       |> String.concat ~sep:","
     in
     let body =
@@ -42,6 +43,43 @@ let handle_api_commits (source : Git.t) =
         last_pulled
         commits_json
     in
+    json_response ~status:`OK body
+;;
+
+let handle_api_services (source : Systemd.t) =
+  let%bind services_result = source.services () in
+  match services_result with
+  | Error msg ->
+    let body = Printf.sprintf {|{"error":"%s"}|} (json_escape msg) in
+    json_response ~status:`Internal_server_error body
+  | Ok services ->
+    let services_json =
+      List.map
+        services
+        ~f:(fun
+             { Systemd.name
+             ; description
+             ; load_state
+             ; active_state
+             ; sub_state
+             ; unit_file_state
+             ; main_pid
+             ; active_since
+             }
+           ->
+          Printf.sprintf
+            {|{"name":"%s","description":"%s","load_state":"%s","active_state":"%s","sub_state":"%s","unit_file_state":"%s","main_pid":"%s","active_since":"%s"}|}
+            (json_escape name)
+            (json_escape description)
+            (json_escape load_state)
+            (json_escape active_state)
+            (json_escape sub_state)
+            (json_escape unit_file_state)
+            (json_escape main_pid)
+            (json_escape active_since))
+      |> String.concat ~sep:","
+    in
+    let body = Printf.sprintf {|{"services":[%s]}|} services_json in
     json_response ~status:`OK body
 ;;
 
@@ -63,7 +101,7 @@ let index_html =
 </html>|}
 ;;
 
-let handler source ~body:_ _sock req =
+let handler source systemd ~body:_ _sock req =
   let path = Uri.path (Request.uri req) in
   match (Request.meth req, path) with
   | `GET, "/" ->
@@ -76,6 +114,8 @@ let handler source ~body:_ _sock req =
      | Error _ -> json_response ~status:`Not_found {|{"error":"js not found"}|})
   | `GET, "/api/commits" ->
     handle_api_commits source
+  | `GET, "/api/services" ->
+    handle_api_services systemd
   | `GET, "/health" ->
     let body = {|{"status":"ok"}|} in
     json_response ~status:`OK body
@@ -100,6 +140,12 @@ let create_git_source () =
     Git_real.create ~repo_path
 ;;
 
+let create_systemd_source () =
+  match Sys.getenv "AFFINEUR_DATA_SOURCE" with
+  | Some "fake" -> Systemd_fake.create ()
+  | _ -> Systemd_real.create ()
+;;
+
 let () =
   let port =
     Sys.getenv "PORT"
@@ -107,11 +153,12 @@ let () =
     |> Option.value ~default:8080
   in
   let source = create_git_source () in
+  let systemd = create_systemd_source () in
   let _server =
     Server.create
       ~on_handler_error:`Raise
       (Tcp.Where_to_listen.of_port port)
-      (handler source)
+      (handler source systemd)
   in
   printf "affineur listening on port %d\n%!" port;
   never_returns (Scheduler.go ())
