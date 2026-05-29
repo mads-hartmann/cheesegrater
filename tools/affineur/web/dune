@@ -1,0 +1,8 @@
+(executable
+ (name main)
+ (modes js)
+ (js_of_ocaml
+  (flags (:standard)))
+ (libraries bonsai.web async_js yojson)
+ (preprocess
+  (pps ppx_jane js_of_ocaml-ppx bonsai.ppx_bonsai)))
