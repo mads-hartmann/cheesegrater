@@ -10,7 +10,11 @@
  (public_name affineur)
  (package affineur)
  (libraries
+  affineur_lib
   async
   core
+  core_unix
   cohttp-async
-  yojson))
+  yojson)
+ (preprocess
+  (pps ppx_jane)))
