@@ -1,13 +1,17 @@
 {
 	"name": "cheesegrater",
-	"build": {
-		"context": ".",
-		"dockerfile": "Dockerfile"
-	},
+	"image": "mcr.microsoft.com/devcontainers/base:2.0.4-noble",
 	"features": {
 		"ghcr.io/devcontainers/features/nix": {
 			"multiUser": false,
 			"extraNixConfig": "experimental-features = nix-command flakes"
+		}
+	},
+	"forwardPorts": [8080],
+	"portsAttributes": {
+		"8080": {
+			"label": "affineur",
+			"onAutoForward": "notify"
 		}
 	}
 }
