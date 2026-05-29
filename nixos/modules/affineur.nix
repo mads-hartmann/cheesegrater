@@ -58,7 +58,11 @@ in
         ReadOnlyPaths = [ (toString cfg.repoPath) ];
       };
 
-      path = [ pkgs.git ];
+      # git: read commit history. systemd: query unit status via systemctl.
+      path = [
+        pkgs.git
+        pkgs.systemd
+      ];
     };
 
     networking.firewall.allowedTCPPorts = [ cfg.port ];
