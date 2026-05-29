@@ -1,13 +1,9 @@
 open Core
 open Async
 open Cohttp_async
+open Affineur_lib
 
 let version = Version.version
-
-let repo_path =
-  Sys.getenv "REPO_PATH"
-  |> Option.value ~default:"/etc/nixos"
-;;
 
 let json_response ~status body =
   let headers = Cohttp.Header.of_list [ ("content-type", "application/json") ] in
@@ -26,48 +22,16 @@ let js_response body =
   Server.respond_string ~status:`OK ~headers body
 ;;
 
-let run_git_log () =
-  let%map result =
-    Process.run
-      ~working_dir:repo_path
-      ~prog:"git"
-      ~args:[ "log"; "--oneline"; "-5"; "--format=%H %s" ]
-      ()
-  in
-  match result with
-  | Error err -> Error (Error.to_string_hum err)
-  | Ok output ->
-    let commits =
-      String.split_lines output
-      |> List.filter_map ~f:(fun line ->
-        match String.lsplit2 line ~on:' ' with
-        | Some (sha, message) -> Some (sha, message)
-        | None -> None)
-    in
-    Ok commits
-;;
-
-let last_pull_time () =
-  let fetch_head = Filename.concat repo_path ".git/FETCH_HEAD" in
-  let%map stat_result =
-    try_with (fun () -> Unix.stat fetch_head)
-  in
-  match stat_result with
-  | Ok stat ->
-    Time_float_unix.to_string_iso8601_basic stat.mtime ~zone:Time_float.Zone.utc
-  | Error _ -> "unknown"
-;;
-
-let handle_api_commits () =
-  let%bind last_pulled = last_pull_time () in
-  let%bind commits_result = run_git_log () in
+let handle_api_commits (source : Git.t) =
+  let%bind last_pulled = source.last_pulled () in
+  let%bind commits_result = source.recent_commits () in
   match commits_result with
   | Error msg ->
     let body = Printf.sprintf {|{"error":"%s"}|} msg in
     json_response ~status:`Internal_server_error body
   | Ok commits ->
     let commits_json =
-      List.map commits ~f:(fun (sha, message) ->
+      List.map commits ~f:(fun { Git.sha; message } ->
         let message = String.substr_replace_all message ~pattern:{|"|} ~with_:{|\"|}  in
         Printf.sprintf {|{"sha":"%s","message":"%s"}|} sha message)
       |> String.concat ~sep:","
@@ -93,12 +57,13 @@ let index_html =
   </style>
 </head>
 <body>
+  <div id="app"></div>
   <script src="/main.js"></script>
 </body>
 </html>|}
 ;;
 
-let handler ~body:_ _sock req =
+let handler source ~body:_ _sock req =
   let path = Uri.path (Request.uri req) in
   match (Request.meth req, path) with
   | `GET, "/" ->
@@ -110,7 +75,7 @@ let handler ~body:_ _sock req =
      | Ok js -> js_response js
      | Error _ -> json_response ~status:`Not_found {|{"error":"js not found"}|})
   | `GET, "/api/commits" ->
-    handle_api_commits ()
+    handle_api_commits source
   | `GET, "/health" ->
     let body = {|{"status":"ok"}|} in
     json_response ~status:`OK body
@@ -121,18 +86,32 @@ let handler ~body:_ _sock req =
     json_response ~status:`Not_found {|{"error":"not found"}|}
 ;;
 
+let create_git_source () =
+  match Sys.getenv "AFFINEUR_DATA_SOURCE" with
+  | Some "fake" ->
+    printf "data source: fake\n%!";
+    Git_fake.create ()
+  | _ ->
+    let repo_path =
+      Sys.getenv "REPO_PATH"
+      |> Option.value ~default:"/etc/nixos"
+    in
+    printf "data source: git (%s)\n%!" repo_path;
+    Git_real.create ~repo_path
+;;
+
 let () =
   let port =
     Sys.getenv "PORT"
     |> Option.map ~f:Int.of_string
     |> Option.value ~default:8080
   in
+  let source = create_git_source () in
   let _server =
     Server.create
       ~on_handler_error:`Raise
       (Tcp.Where_to_listen.of_port port)
-      handler
+      (handler source)
   in
   printf "affineur listening on port %d\n%!" port;
-  printf "repo path: %s\n%!" repo_path;
   never_returns (Scheduler.go ())

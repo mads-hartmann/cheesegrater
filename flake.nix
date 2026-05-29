@@ -70,9 +70,24 @@
         };
       };
 
-      devShells.${system}.default = pkgs.mkShell {
-        inherit (self.checks.${system}.pre-commit-check) shellHook;
-        buildInputs = self.checks.${system}.pre-commit-check.enabledPackages;
+      devShells.${system} = {
+        default = pkgs.mkShell {
+          inherit (self.checks.${system}.pre-commit-check) shellHook;
+          buildInputs = self.checks.${system}.pre-commit-check.enabledPackages;
+        };
+
+        affineur = pkgs.mkShell {
+          dontDetectOcamlConflicts = true;
+          buildInputs =
+            import ./tools/affineur/deps.nix ocamlPackages
+            ++ (with ocamlPackages; [
+              ocaml
+              dune_3
+              findlib
+              js_of_ocaml-compiler
+              ocaml-embed-file
+            ]);
+        };
       };
     };
 }

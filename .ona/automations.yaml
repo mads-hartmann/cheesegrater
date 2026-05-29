@@ -1,3 +1,14 @@
+services:
+  affineur:
+    name: affineur
+    description: Runs affineur with fake data for local development.
+    commands:
+      start: |
+        cd tools/affineur
+        gitpod environment port open --name affineur --dont-wait 8080
+        nix develop .#affineur --command bash -c 'dune build @all && AFFINEUR_DATA_SOURCE=fake PORT=8080 JS_PATH=_build/default/web/main.bc.js dune exec bin/main.exe'
+      ready: curl -sf http://localhost:8080/health
+
 tasks:
   install-pre-commit-hook:
     name: Install pre-commit hook

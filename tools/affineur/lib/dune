@@ -1,0 +1,5 @@
+(library
+ (name affineur_lib)
+ (libraries async core core_unix)
+ (preprocess
+  (pps ppx_jane)))

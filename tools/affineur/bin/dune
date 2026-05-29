@@ -10,6 +10,7 @@
  (public_name affineur)
  (package affineur)
  (libraries
+  affineur_lib
   async
   core
   core_unix
