@@ -22,63 +22,66 @@ let js_response body =
   Server.respond_string ~status:`OK ~headers body
 ;;
 
+(* Respond with HTTP 500 and a clear, valid-JSON error body. The message is
+   also logged to stderr (captured by journald) because Async_js.Http on the
+   browser client discards the response body for non-2xx statuses; the log is
+   therefore the reliable place to diagnose failures, while the body still
+   helps non-browser clients such as curl. Yojson handles escaping so messages
+   containing quotes or newlines (e.g. git errors) stay valid JSON. *)
+let error_response ~endpoint msg =
+  eprintf "[affineur] %s failed: %s\n%!" endpoint msg;
+  let body = Yojson.Basic.to_string (`Assoc [ "error", `String msg ]) in
+  json_response ~status:`Internal_server_error body
+;;
+
 let handle_api_commits (source : Git.t) =
   let%bind last_pulled = source.last_pulled () in
   let%bind commits_result = source.recent_commits () in
-  (* Return git failures as 200 with an "error" field rather than a 500.
-     Async_js.Http on the client discards the response body for non-2xx
-     statuses, so a 500 surfaces only as a generic "Request failed (code 500)"
-     and hides the underlying git error. Yojson handles escaping so error
-     messages containing quotes or newlines still produce valid JSON. *)
-  let json =
-    match commits_result with
-    | Error msg -> `Assoc [ "error", `String msg ]
-    | Ok commits ->
-      let commits_json =
-        List.map commits ~f:(fun { Git.sha; message } ->
-          `Assoc [ "sha", `String sha; "message", `String message ])
-      in
+  match commits_result with
+  | Error msg -> error_response ~endpoint:"/api/commits" msg
+  | Ok commits ->
+    let commits_json =
+      List.map commits ~f:(fun { Git.sha; message } ->
+        `Assoc [ "sha", `String sha; "message", `String message ])
+    in
+    let json =
       `Assoc [ "last_pulled", `String last_pulled; "commits", `List commits_json ]
-  in
-  json_response ~status:`OK (Yojson.Basic.to_string json)
+    in
+    json_response ~status:`OK (Yojson.Basic.to_string json)
 ;;
 
 let handle_api_services (source : Systemd.t) =
   let%bind services_result = source.services () in
-  (* See handle_api_commits: return failures as 200 with an "error" field and
-     build JSON via Yojson so all fields are correctly escaped. *)
-  let json =
-    match services_result with
-    | Error msg -> `Assoc [ "error", `String msg ]
-    | Ok services ->
-      let services_json =
-        List.map
-          services
-          ~f:(fun
-               { Systemd.name
-               ; description
-               ; load_state
-               ; active_state
-               ; sub_state
-               ; unit_file_state
-               ; main_pid
-               ; active_since
-               }
-             ->
-            `Assoc
-              [ "name", `String name
-              ; "description", `String description
-              ; "load_state", `String load_state
-              ; "active_state", `String active_state
-              ; "sub_state", `String sub_state
-              ; "unit_file_state", `String unit_file_state
-              ; "main_pid", `String main_pid
-              ; "active_since", `String active_since
-              ])
-      in
-      `Assoc [ "services", `List services_json ]
-  in
-  json_response ~status:`OK (Yojson.Basic.to_string json)
+  match services_result with
+  | Error msg -> error_response ~endpoint:"/api/services" msg
+  | Ok services ->
+    let services_json =
+      List.map
+        services
+        ~f:(fun
+             { Systemd.name
+             ; description
+             ; load_state
+             ; active_state
+             ; sub_state
+             ; unit_file_state
+             ; main_pid
+             ; active_since
+             }
+           ->
+          `Assoc
+            [ "name", `String name
+            ; "description", `String description
+            ; "load_state", `String load_state
+            ; "active_state", `String active_state
+            ; "sub_state", `String sub_state
+            ; "unit_file_state", `String unit_file_state
+            ; "main_pid", `String main_pid
+            ; "active_since", `String active_since
+            ])
+    in
+    let json = `Assoc [ "services", `List services_json ] in
+    json_response ~status:`OK (Yojson.Basic.to_string json)
 ;;
 
 let index_html =
