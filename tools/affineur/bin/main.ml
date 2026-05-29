@@ -22,36 +22,38 @@ let js_response body =
   Server.respond_string ~status:`OK ~headers body
 ;;
 
-let json_escape s = String.substr_replace_all s ~pattern:{|"|} ~with_:{|\"|}
+(* Respond with HTTP 500 and a clear, valid-JSON error body. The message is
+   also logged to stderr (captured by journald) because Async_js.Http on the
+   browser client discards the response body for non-2xx statuses; the log is
+   therefore the reliable place to diagnose failures, while the body still
+   helps non-browser clients such as curl. Yojson handles escaping so messages
+   containing quotes or newlines (e.g. git errors) stay valid JSON. *)
+let error_response ~endpoint msg =
+  eprintf "[affineur] %s failed: %s\n%!" endpoint msg;
+  let body = Yojson.Basic.to_string (`Assoc [ "error", `String msg ]) in
+  json_response ~status:`Internal_server_error body
+;;
 
 let handle_api_commits (source : Git.t) =
   let%bind last_pulled = source.last_pulled () in
   let%bind commits_result = source.recent_commits () in
   match commits_result with
-  | Error msg ->
-    let body = Printf.sprintf {|{"error":"%s"}|} msg in
-    json_response ~status:`Internal_server_error body
+  | Error msg -> error_response ~endpoint:"/api/commits" msg
   | Ok commits ->
     let commits_json =
       List.map commits ~f:(fun { Git.sha; message } ->
-        Printf.sprintf {|{"sha":"%s","message":"%s"}|} sha (json_escape message))
-      |> String.concat ~sep:","
+        `Assoc [ "sha", `String sha; "message", `String message ])
     in
-    let body =
-      Printf.sprintf
-        {|{"last_pulled":"%s","commits":[%s]}|}
-        last_pulled
-        commits_json
+    let json =
+      `Assoc [ "last_pulled", `String last_pulled; "commits", `List commits_json ]
     in
-    json_response ~status:`OK body
+    json_response ~status:`OK (Yojson.Basic.to_string json)
 ;;
 
 let handle_api_services (source : Systemd.t) =
   let%bind services_result = source.services () in
   match services_result with
-  | Error msg ->
-    let body = Printf.sprintf {|{"error":"%s"}|} (json_escape msg) in
-    json_response ~status:`Internal_server_error body
+  | Error msg -> error_response ~endpoint:"/api/services" msg
   | Ok services ->
     let services_json =
       List.map
@@ -67,20 +69,19 @@ let handle_api_services (source : Systemd.t) =
              ; active_since
              }
            ->
-          Printf.sprintf
-            {|{"name":"%s","description":"%s","load_state":"%s","active_state":"%s","sub_state":"%s","unit_file_state":"%s","main_pid":"%s","active_since":"%s"}|}
-            (json_escape name)
-            (json_escape description)
-            (json_escape load_state)
-            (json_escape active_state)
-            (json_escape sub_state)
-            (json_escape unit_file_state)
-            (json_escape main_pid)
-            (json_escape active_since))
-      |> String.concat ~sep:","
+          `Assoc
+            [ "name", `String name
+            ; "description", `String description
+            ; "load_state", `String load_state
+            ; "active_state", `String active_state
+            ; "sub_state", `String sub_state
+            ; "unit_file_state", `String unit_file_state
+            ; "main_pid", `String main_pid
+            ; "active_since", `String active_since
+            ])
     in
-    let body = Printf.sprintf {|{"services":[%s]}|} services_json in
-    json_response ~status:`OK body
+    let json = `Assoc [ "services", `List services_json ] in
+    json_response ~status:`OK (Yojson.Basic.to_string json)
 ;;
 
 let index_html =
