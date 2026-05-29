@@ -40,6 +40,14 @@ in
         PORT = toString cfg.port;
         REPO_PATH = toString cfg.repoPath;
         JS_PATH = "${affineur}/share/affineur/main.js";
+
+        # The service runs as a DynamicUser, so the repo (owned by the human
+        # user that cloned it) trips git's "dubious ownership" check and
+        # `git log` aborts. Mark the repo as trusted via the environment so we
+        # don't depend on any on-disk git config.
+        GIT_CONFIG_COUNT = "1";
+        GIT_CONFIG_KEY_0 = "safe.directory";
+        GIT_CONFIG_VALUE_0 = toString cfg.repoPath;
       };
 
       serviceConfig = {
@@ -54,8 +62,11 @@ in
         ProtectHome = true;
         PrivateTmp = true;
 
-        # Allow reading the git repo
-        ReadOnlyPaths = [ (toString cfg.repoPath) ];
+        # The repo lives under /home, which ProtectHome makes inaccessible.
+        # A read-only bind mount re-exposes just the repo into the sandbox so
+        # `git log` can read history while the rest of /home stays hidden.
+        # (ReadOnlyPaths alone does not bypass ProtectHome.)
+        BindReadOnlyPaths = [ (toString cfg.repoPath) ];
       };
 
       # git: read commit history. systemd: query unit status via systemctl.

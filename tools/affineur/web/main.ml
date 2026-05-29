@@ -25,6 +25,11 @@ module Commits_response = struct
   let of_json_string s =
     let json = Yojson.Basic.from_string s in
     let open Yojson.Basic.Util in
+    (* The server returns git failures as a 200 with an "error" field rather
+       than a non-2xx status (whose body the client cannot read). Surface it. *)
+    (match json |> member "error" with
+     | `String msg -> failwith msg
+     | _ -> ());
     { last_pulled = json |> member "last_pulled" |> to_string
     ; commits = json |> member "commits" |> to_list |> List.map ~f:Commit.of_json
     }
@@ -63,6 +68,11 @@ module Services_response = struct
   let of_json_string s =
     let json = Yojson.Basic.from_string s in
     let open Yojson.Basic.Util in
+    (* The server returns failures as a 200 with an "error" field rather than a
+       non-2xx status (whose body the client cannot read). Surface it. *)
+    (match json |> member "error" with
+     | `String msg -> failwith msg
+     | _ -> ());
     { services = json |> member "services" |> to_list |> List.map ~f:Service.of_json }
   ;;
 end

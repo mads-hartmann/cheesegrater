@@ -103,6 +103,7 @@
   services.affineur = {
     enable = true;
     port = 8080;
+    repoPath = "/home/mads/cheesegrater";
   };
 
   # programs.firefox.enable = true;
