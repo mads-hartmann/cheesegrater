@@ -111,6 +111,7 @@
     port = 8081;
     folders = [
       "/home/mads/cheesegrater/docs"
+      "/home/mads/memory"
     ];
   };
 
