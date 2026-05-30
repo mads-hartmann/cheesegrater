@@ -61,12 +61,22 @@ in
         # and a private tmp. The served folders are re-exposed read-only below.
         NoNewPrivileges = true;
         ProtectSystem = "strict";
-        ProtectHome = true;
         PrivateTmp = true;
 
-        # The docs live under /home, which ProtectHome hides. Bind each served
-        # folder back into the sandbox read-only so the server can read them
-        # while the rest of /home stays inaccessible.
+        # The docs live under /home, which we want hidden except for the served
+        # folders. ProtectHome must be "tmpfs" rather than true here: with
+        # "true", systemd mounts an empty, mode-000 directory over /home that
+        # even the bind mounts below cannot be traversed through, so resolving
+        # a served folder fails (realpath: Permission denied). "tmpfs" instead
+        # mounts a fresh root-owned 0755 tmpfs over /home and creates the bind
+        # mountpoints inside it as root (0755), so the service user can
+        # traverse /home and /home/<user> regardless of their real 0700 mode;
+        # only the folders' own permissions then apply.
+        ProtectHome = "tmpfs";
+
+        # Read-only bind mounts re-exposing just the served folders into the
+        # sandbox so the server can read them while the rest of /home stays
+        # hidden.
         BindReadOnlyPaths = map toString cfg.folders;
       };
     };
