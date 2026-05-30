@@ -10,4 +10,4 @@ Documentation for running NixOS on a Mac Pro 4,1 flashed to 5,1.
 | [prerequisites.md](prerequisites.md) | Creating a bootable USB |
 | [installation.md](installation.md) | Installing NixOS |
 | [maintenance.md](maintenance.md) | Storing configuration in git and iterating |
-| [deployment.md](deployment.md) | Pull-based auto-deployment via GitHub Releases |
+| [deployment.md](deployment.md) | Pull-based auto-deployment via git pull on main |

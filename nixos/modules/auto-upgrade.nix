@@ -1,10 +1,7 @@
-# Polls the latest GitHub Release for this repo and runs nixos-rebuild switch
-# when a new release tag is detected. The applied tag is persisted to
-# /var/lib/nixos-auto-upgrade/current-tag so the service is idempotent across
-# timer firings.
-#
-# The machine needs outbound HTTPS to github.com and raw.githubusercontent.com.
-# No inbound access or deploy keys are required.
+# Periodically pulls the latest commit on main in the local checkout at
+# ~/cheesegrater and runs nixos-rebuild switch against it. This keeps the
+# machine tracking main without any inbound access or deploy keys — it only
+# needs outbound HTTPS to github.com to fetch.
 {
   config,
   lib,
@@ -13,48 +10,25 @@
 }:
 
 let
-  repo = "mads-hartmann/cheesegrater";
   flakeAttr = "cheesegrater";
-  stateDir = "/var/lib/nixos-auto-upgrade";
-  stateFile = "${stateDir}/current-tag";
+  repoPath = "/home/mads/cheesegrater";
+  repoUser = "mads";
 
   upgradeScript = pkgs.writeShellScript "nixos-auto-upgrade" ''
     set -euo pipefail
 
-    mkdir -p ${stateDir}
+    cd ${repoPath}
 
-    # Fetch the latest release tag from the GitHub API.
-    LATEST=$(${pkgs.curl}/bin/curl -fsSL \
-      -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${repo}/releases/latest" \
-      | ${pkgs.jq}/bin/jq -r '.tag_name')
+    # Pull as the repo owner so git object ownership stays correct.
+    ${pkgs.sudo}/bin/sudo -u ${repoUser} ${pkgs.git}/bin/git pull --ff-only
 
-    if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
-      echo "No releases found, skipping."
-      exit 0
-    fi
-
-    CURRENT=""
-    if [ -f ${stateFile} ]; then
-      CURRENT=$(cat ${stateFile})
-    fi
-
-    if [ "$LATEST" = "$CURRENT" ]; then
-      echo "Already at $LATEST, nothing to do."
-      exit 0
-    fi
-
-    echo "Upgrading $CURRENT -> $LATEST"
-    ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch \
-      --flake "github:${repo}/$LATEST#${flakeAttr}"
-
-    echo "$LATEST" > ${stateFile}
-    echo "Upgrade to $LATEST complete."
+    # nixos-rebuild needs root to switch the system profile.
+    ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake ".#${flakeAttr}"
   '';
 in
 {
   systemd.services.nixos-auto-upgrade = {
-    description = "NixOS auto-upgrade from GitHub releases";
+    description = "NixOS auto-upgrade from local checkout of main";
     # Requires network connectivity before running.
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];

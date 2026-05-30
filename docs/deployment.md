@@ -2,31 +2,33 @@
 
 ## How it works
 
-Deployments are pull-based. The machine polls GitHub for new releases and applies them automatically — no inbound SSH access or deploy keys required.
+Deployments are pull-based. The machine periodically pulls the latest commit on
+`main` in its local checkout at `~/cheesegrater` and rebuilds — no inbound SSH
+access or deploy keys required, only outbound HTTPS to github.com to fetch.
 
 ```
-push to branch  →  CI: nix flake check
-                        ↓ (fails: no release)
-merge to main   →  CI: nix flake check → create GitHub Release (tag)
-                                                    ↓
-cheesegrater    ←  systemd timer polls every 5 min ←
-                   detects new tag → nixos-rebuild switch --flake github:…/<tag>#cheesegrater
-                   persists tag to /var/lib/nixos-auto-upgrade/current-tag
+push / merge to main  →  CI: nix flake check + build affineur
+                                      ↓
+cheesegrater          ←  systemd timer fires every 5 min
+                         git pull --ff-only in ~/cheesegrater
+                         nixos-rebuild switch --flake .#cheesegrater
 ```
 
 ## Components
 
 **`.github/workflows/ci.yml`**
-- Runs `nix flake check` on every push and PR.
-- On `main` only, after checks pass, creates a GitHub Release tagged `deploy-YYYYMMDD-HHMMSS-<sha>` pointing at the exact commit.
+- Runs `nix flake check` and builds `affineur` on every push and PR.
 
 **`nixos/modules/auto-upgrade.nix`**
 - Defines a `nixos-auto-upgrade` systemd service that:
-  1. Calls the GitHub releases API to get the latest tag.
-  2. Compares it to `/var/lib/nixos-auto-upgrade/current-tag`.
-  3. If different, runs `nixos-rebuild switch --flake github:mads-hartmann/cheesegrater/<tag>#cheesegrater`.
-  4. Writes the new tag to the state file on success.
+  1. `cd`s into `/home/mads/cheesegrater`.
+  2. Runs `git pull --ff-only` as the `mads` user.
+  3. Runs `nixos-rebuild switch --flake .#cheesegrater` as root.
 - A systemd timer fires every 5 minutes (with up to 1 minute of random jitter).
+
+Because the rebuild runs against the working tree, any uncommitted local changes
+in `~/cheesegrater` are included in the build. Keep the checkout clean so the
+machine tracks `main`.
 
 ## Monitoring
 
@@ -46,21 +48,23 @@ systemctl list-timers nixos-auto-upgrade.timer
 See what's currently deployed:
 
 ```bash
-cat /var/lib/nixos-auto-upgrade/current-tag
+cd ~/cheesegrater && git rev-parse HEAD
 ```
 
 ## Manual deployment
 
-To deploy a specific release without waiting for the timer:
+To deploy immediately without waiting for the timer:
 
 ```bash
 sudo systemctl start nixos-auto-upgrade.service
 ```
 
-To deploy a specific tag directly:
+Or run the steps by hand:
 
 ```bash
-sudo nixos-rebuild switch --flake "github:mads-hartmann/cheesegrater/<tag>#cheesegrater"
+cd ~/cheesegrater
+git pull --ff-only
+sudo nixos-rebuild switch --flake .#cheesegrater
 ```
 
 ## Rollback
@@ -79,8 +83,9 @@ sudo nix-env --switch-generation <N> --profile /nix/var/nix/profiles/system
 sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch
 ```
 
-After rolling back, update the state file so the timer doesn't immediately re-apply the broken release:
+To stop the timer from immediately re-applying a broken commit, either check out
+a known-good commit in `~/cheesegrater` or stop the timer until `main` is fixed:
 
 ```bash
-echo "<working-tag>" | sudo tee /var/lib/nixos-auto-upgrade/current-tag
+sudo systemctl stop nixos-auto-upgrade.timer
 ```
