@@ -8,7 +8,7 @@ An HTTP server built with OCaml using the Jane Street stack (Async, Core, cohttp
 
 - `GET /` — Bonsai SPA showing systemd service status, last pull time, and recent commits
 - `GET /api/commits` — JSON with last pull time and the 5 most recent commits
-- `GET /api/services` — JSON with the status of the systemd units deployed by this config (`affineur.service`, `nixos-auto-upgrade.service`)
+- `GET /api/services` — JSON with the status of the systemd units deployed by this config (`affineur.service`, `mdq.service`, `nixos-auto-upgrade.service`)
 - `GET /health` — returns `200 OK` with `{"status":"ok"}`
 - `GET /version` — returns `200 OK` with `{"version":"<version>"}`
 
