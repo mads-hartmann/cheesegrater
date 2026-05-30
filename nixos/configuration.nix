@@ -115,6 +115,15 @@
     ];
   };
 
+  # nginx on port 80 routes by hostname:
+  #   cheesegrater.local        -> affineur (8080)
+  #   memory.cheesegrater.local -> mdq      (8081)
+  services.reverse-proxy = {
+    enable = true;
+    affineurHost = "cheesegrater.local";
+    mdqHost = "memory.cheesegrater.local";
+  };
+
   # programs.firefox.enable = true;
 
   # List packages installed in system profile.
