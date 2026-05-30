@@ -87,15 +87,21 @@ in
         # Hardening
         NoNewPrivileges = true;
         ProtectSystem = "strict";
-        ProtectHome = true;
         PrivateTmp = true;
 
-        # The repo lives under /home, which ProtectHome makes inaccessible.
-        # A read-only bind mount re-exposes just the repo into the sandbox so
+        # The repo lives under /home, which we want hidden except for the repo
+        # itself. ProtectHome must be "tmpfs" rather than true here: with
+        # "true", systemd mounts an empty, mode-000 directory over /home that
+        # even the bind mount below cannot be traversed through, so chdir into
+        # the repo fails (chdir: Permission denied). "tmpfs" instead mounts a
+        # fresh root-owned 0755 tmpfs over /home and creates the bind
+        # mountpoints inside it as root (0755), so the service user can
+        # traverse /home and /home/<user> regardless of their real 0700 mode;
+        # only the repo's own (group-readable) permissions then apply.
+        ProtectHome = "tmpfs";
+
+        # Read-only bind mount re-exposing just the repo into the sandbox so
         # `git log` can read history while the rest of /home stays hidden.
-        # systemd creates the intermediate mount points as root, so the home
-        # directory's own 0700 mode does not block traversal; only the repo's
-        # (group-readable) permissions apply.
         BindReadOnlyPaths = [ (toString cfg.repoPath) ];
       };
 
