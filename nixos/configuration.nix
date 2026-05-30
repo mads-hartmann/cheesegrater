@@ -106,6 +106,14 @@
     repoPath = "/home/mads/cheesegrater";
   };
 
+  services.mdq = {
+    enable = true;
+    port = 8081;
+    folders = [
+      "/home/mads/cheesegrater/docs"
+    ];
+  };
+
   # programs.firefox.enable = true;
 
   # List packages installed in system profile.

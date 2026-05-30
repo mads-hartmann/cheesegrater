@@ -1,0 +1,8 @@
+(lang dune 3.0)
+
+(name mdq)
+
+(generate_opam_files false)
+
+(package
+ (name mdq))
