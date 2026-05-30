@@ -52,6 +52,10 @@ let style =
     code { font-family: monospace; }
     pre code { background: none; }
     a { color: var(--accent); }
+    .frontmatter { margin: 0 0 1.5rem; padding: 0.75rem 1rem; background: var(--side); border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
+    .frontmatter .fm-row { display: flex; gap: 0.5rem; padding: 2px 0; }
+    .frontmatter dt { flex: 0 0 8rem; margin: 0; font-weight: 600; color: var(--muted); }
+    .frontmatter dd { margin: 0; }
   |}
 ;;
 
@@ -93,6 +97,24 @@ let page_shell ~title ~roots ~main =
     main
 ;;
 
+(* Render frontmatter as a definition list shown above the document body.
+   Empty frontmatter (the common case) renders nothing, so pages without a
+   metadata block look exactly as before. *)
+let render_frontmatter (fields : Frontmatter.t) =
+  match fields with
+  | [] -> ""
+  | _ ->
+    let rows =
+      List.map fields ~f:(fun { Frontmatter.key; value } ->
+        sprintf
+          {|<div class="fm-row"><dt>%s</dt><dd>%s</dd></div>|}
+          (escape key)
+          (escape value))
+      |> String.concat ~sep:"\n"
+    in
+    sprintf {|<dl class="frontmatter">%s</dl>|} rows
+;;
+
 let render_listing ~title entries =
   let items =
     List.map entries ~f:(fun { Docs.name; path; kind } ->
@@ -120,10 +142,12 @@ let handle_content (docs : Docs.t) path =
   let roots = docs.roots () in
   let%bind content = docs.resolve path in
   match content with
-  | Docs.Page { title; html } ->
+  | Docs.Page { title; frontmatter; html } ->
     (* cmarkit already renders the document's own [<h1>], so emit the body
-       verbatim rather than prepending another heading. *)
-    html_response ~status:`OK (page_shell ~title ~roots ~main:html)
+       verbatim rather than prepending another heading. Any frontmatter is
+       shown as a small metadata block above it. *)
+    let main = render_frontmatter frontmatter ^ html in
+    html_response ~status:`OK (page_shell ~title ~roots ~main)
   | Docs.Listing { title; entries } ->
     html_response ~status:`OK (page_shell ~title ~roots ~main:(render_listing ~title entries))
   | Docs.Not_found ->

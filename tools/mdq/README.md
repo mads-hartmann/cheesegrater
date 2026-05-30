@@ -33,6 +33,25 @@ Folders may also be supplied via the `DOCS_PATHS` environment variable
 Path traversal (`..`) is rejected, and the markdown is rendered with cmarkit's
 safe renderer (raw HTML blocks and unsafe link schemes are stripped).
 
+### Frontmatter
+
+A page may begin with a YAML frontmatter block fenced by `---` lines:
+
+```markdown
+---
+title: Getting started
+tags: [docs, intro]
+---
+
+# Body starts here
+```
+
+The block must start on the first line and is closed by the next `---` (or
+`...`). Its fields are parsed and shown as a metadata table above the rendered
+body. A `title` field, if present, sets the page title (otherwise the title is
+the first `# H1`, then the file name). A malformed or unterminated block is
+left as ordinary markdown rather than failing the page.
+
 ## Endpoints
 
 - `GET /` and any other path — the rendered page or directory listing for that
@@ -47,7 +66,8 @@ safe renderer (raw HTML blocks and unsafe link schemes are stripped).
   (layout, sidebar, and inline CSS).
 - `lib/` — `docs.ml` defines the content types; `docs_fs.ml` resolves URL
   paths against the configured folders (index heuristic, listings, traversal
-  guard); `markdown.ml` wraps cmarkit.
+  guard); `markdown.ml` wraps cmarkit; `frontmatter.ml` splits and parses the
+  optional YAML frontmatter block.
 
 If client-side behavior is ever needed, add a separate static script and
 reference it from the page shell in `bin/main.ml`.
