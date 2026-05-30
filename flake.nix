@@ -47,8 +47,13 @@
       ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_2;
     in
     {
-      packages.${system}.affineur = ocamlPackages.callPackage ./tools/affineur/package.nix {
-        inherit self ocamlPackages;
+      packages.${system} = {
+        affineur = ocamlPackages.callPackage ./tools/affineur/package.nix {
+          inherit self ocamlPackages;
+        };
+        mdq = ocamlPackages.callPackage ./tools/mdq/package.nix {
+          inherit self ocamlPackages;
+        };
       };
 
       nixosConfigurations.cheesegrater = nixpkgs.lib.nixosSystem {
@@ -59,6 +64,7 @@
           ./nixos/configuration.nix
           ./nixos/hardware-configuration.nix
           ./nixos/modules/affineur.nix
+          ./nixos/modules/mdq.nix
         ];
       };
 
@@ -86,6 +92,17 @@
               findlib
               js_of_ocaml-compiler
               ocaml-embed-file
+            ]);
+        };
+
+        mdq = pkgs.mkShell {
+          dontDetectOcamlConflicts = true;
+          buildInputs =
+            import ./tools/mdq/deps.nix ocamlPackages
+            ++ (with ocamlPackages; [
+              ocaml
+              dune_3
+              findlib
             ]);
         };
       };
