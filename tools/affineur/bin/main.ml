@@ -84,6 +84,33 @@ let handle_api_services (source : Systemd.t) =
     json_response ~status:`OK (Yojson.Basic.to_string json)
 ;;
 
+let handle_api_system (source : System.t) =
+  let%bind info_result = source.info () in
+  match info_result with
+  | Error msg -> error_response ~endpoint:"/api/system" msg
+  | Ok { System.uptime; cpu_percent; cpu_model; cpu_cores; disks } ->
+    let disks_json =
+      List.map disks ~f:(fun { System.mount; size; used; avail; use_percent } ->
+        `Assoc
+          [ "mount", `String mount
+          ; "size", `String size
+          ; "used", `String used
+          ; "avail", `String avail
+          ; "use_percent", `Int use_percent
+          ])
+    in
+    let json =
+      `Assoc
+        [ "uptime", `String uptime
+        ; "cpu_percent", `Int cpu_percent
+        ; "cpu_model", `String cpu_model
+        ; "cpu_cores", `Int cpu_cores
+        ; "disks", `List disks_json
+        ]
+    in
+    json_response ~status:`OK (Yojson.Basic.to_string json)
+;;
+
 let index_html =
   {|<!DOCTYPE html>
 <html>
@@ -91,8 +118,19 @@ let index_html =
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>cheesegrater</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    body { margin: 0; background: #fafafa; }
+    html, body {
+      margin: 0;
+      background: #000000;
+      color: #4ade80;
+      font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
   </style>
 </head>
 <body>
@@ -102,7 +140,7 @@ let index_html =
 </html>|}
 ;;
 
-let handler source systemd ~body:_ _sock req =
+let handler source systemd system ~body:_ _sock req =
   let path = Uri.path (Request.uri req) in
   match (Request.meth req, path) with
   | `GET, "/" ->
@@ -117,6 +155,8 @@ let handler source systemd ~body:_ _sock req =
     handle_api_commits source
   | `GET, "/api/services" ->
     handle_api_services systemd
+  | `GET, "/api/system" ->
+    handle_api_system system
   | `GET, "/health" ->
     let body = {|{"status":"ok"}|} in
     json_response ~status:`OK body
@@ -147,6 +187,12 @@ let create_systemd_source () =
   | _ -> Systemd_real.create ()
 ;;
 
+let create_system_source () =
+  match Sys.getenv "AFFINEUR_DATA_SOURCE" with
+  | Some "fake" -> System_fake.create ()
+  | _ -> System_real.create ()
+;;
+
 let () =
   let port =
     Sys.getenv "PORT"
@@ -155,11 +201,12 @@ let () =
   in
   let source = create_git_source () in
   let systemd = create_systemd_source () in
+  let system = create_system_source () in
   let _server =
     Server.create
       ~on_handler_error:`Raise
       (Tcp.Where_to_listen.of_port port)
-      (handler source systemd)
+      (handler source systemd system)
   in
   printf "affineur listening on port %d\n%!" port;
   never_returns (Scheduler.go ())
