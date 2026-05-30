@@ -17,4 +17,4 @@ type service =
 type t = { services : unit -> (service list, string) Result.t Deferred.t }
 
 (* The systemd units this configuration deploys (see nixos/modules). *)
-let deployed_units = [ "affineur.service"; "nixos-auto-upgrade.service" ]
+let deployed_units = [ "affineur.service"; "mdq.service"; "nixos-auto-upgrade.service" ]

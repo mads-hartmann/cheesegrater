@@ -14,6 +14,15 @@ let create () : Systemd.t =
            ; main_pid = "1234"
            ; active_since = "Thu 2025-05-29 12:00:01 UTC"
            }
+         ; { name = "mdq.service"
+           ; description = "mdq markdown browser"
+           ; load_state = "loaded"
+           ; active_state = "active"
+           ; sub_state = "running"
+           ; unit_file_state = "enabled"
+           ; main_pid = "5678"
+           ; active_since = "Thu 2025-05-29 12:00:02 UTC"
+           }
          ; { name = "nixos-auto-upgrade.service"
            ; description = "NixOS auto-upgrade from local checkout of main"
            ; load_state = "loaded"
