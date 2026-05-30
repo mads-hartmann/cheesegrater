@@ -29,6 +29,7 @@ type entry =
 type content =
   | Page of
       { title : string
+      ; frontmatter : Frontmatter.t
       ; html : string
       }
   | Listing of

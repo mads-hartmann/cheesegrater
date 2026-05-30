@@ -1,5 +1,5 @@
 (library
  (name mdq_lib)
- (libraries async core core_unix core_unix.filename_unix cmarkit)
+ (libraries async core core_unix core_unix.filename_unix cmarkit yaml)
  (preprocess
   (pps ppx_jane)))

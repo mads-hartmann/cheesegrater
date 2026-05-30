@@ -66,8 +66,15 @@ let strip_md name = String.chop_suffix name ~suffix:".md" |> Option.value ~defau
 
 let render_page ~fallback fs_file =
   let%map md = Reader.file_contents fs_file in
-  let title = Markdown.title ~fallback md in
-  Docs.Page { title; html = Markdown.to_html md }
+  let frontmatter, body = Frontmatter.split md in
+  (* A [title] field in the frontmatter wins; otherwise fall back to the first
+     H1 in the body, then to the file name. *)
+  let title =
+    match Frontmatter.find frontmatter ~key:"title" with
+    | Some title when not (String.is_empty (String.strip title)) -> title
+    | _ -> Markdown.title ~fallback body
+  in
+  Docs.Page { title; frontmatter; html = Markdown.to_html body }
 ;;
 
 (* List a directory: subdirectories first, then markdown files (excluding the
