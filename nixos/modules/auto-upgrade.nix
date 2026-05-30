@@ -66,16 +66,23 @@ let
       pull --ff-only
 
     # nixos-rebuild needs root to switch the system profile. Evaluating
-    # ".#${flakeAttr}" makes Nix resolve "." to a git+file:// input and run
-    # git as root against ${repoPath}, which is owned by ${repoUser}. Git's
-    # dubious-ownership guard then aborts with "repository path ... is not
-    # owned by current user". Mark the checkout safe for this invocation only
-    # via GIT_CONFIG_* env vars (no system-wide or persisted git config), so
-    # the root-run flake fetch trusts the repo while leaving the ${repoUser}
-    # pull above unaffected (sudo resets the environment).
-    export GIT_CONFIG_COUNT=1
-    export GIT_CONFIG_KEY_0=safe.directory
-    export GIT_CONFIG_VALUE_0=${repoPath}
+    # ".#${flakeAttr}" makes Nix resolve "." to a git+file:// input, which is
+    # fetched with libgit2 running as root against ${repoPath} (owned by
+    # ${repoUser}). libgit2's dubious-ownership guard then aborts with
+    # "repository path ... is not owned by current user (libgit2 error code =
+    # 7)".
+    #
+    # Unlike the git CLI, libgit2 does NOT honour the GIT_CONFIG_COUNT /
+    # GIT_CONFIG_KEY_* env mechanism, nor GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM,
+    # for the safe.directory check — it only reads a real global gitconfig
+    # located via $HOME. So mark the checkout safe by writing a throwaway
+    # gitconfig into the unit's RuntimeDirectory (tmpfs, root-owned,
+    # auto-removed on deactivation) and pointing HOME at it for this
+    # invocation only. Nothing is written system-wide or persisted, and the
+    # ${repoUser} pull above is unaffected (sudo reset its environment).
+    export HOME=$RUNTIME_DIRECTORY
+    ${pkgs.git}/bin/git config --file "$HOME/.gitconfig" \
+      --add safe.directory ${repoPath}
 
     ${pkgs.nixos-rebuild}/bin/nixos-rebuild switch --flake ".#${flakeAttr}"
   '';
