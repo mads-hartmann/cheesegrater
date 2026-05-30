@@ -124,16 +124,17 @@ let fetch_services = fetch_json "/api/services" Services_response.of_json_string
 let fetch_system = fetch_json "/api/system" System_response.of_json_string
 
 (* Terminal palette. The dashboard mimics a dark terminal: green phosphor text
-   on a near-black background, with a few accent colours for state and SHAs. *)
+   on a near-black background, with a few accent colours for state and SHAs.
+   Values reference the retro CRT theme tokens defined in the HTML shell. *)
 module Color = struct
-  let green = "#4ade80"
-  let green_bright = "#86efac"
-  let green_dim = "#16a34a"
-  let muted = "#3f6f52"
-  let faint = "#1f3d2b"
-  let teal = "#2dd4bf"
-  let amber = "#d4a017"
-  let red = "#ef4444"
+  let green = "var(--terminal-green)"
+  let green_bright = "var(--foreground)"
+  let green_dim = "var(--secondary-foreground)"
+  let muted = "var(--muted-foreground)"
+  let faint = "var(--border)"
+  let teal = "var(--terminal-cyan)"
+  let amber = "var(--terminal-amber)"
+  let red = "var(--terminal-red)"
 end
 
 module Css = Css_gen
@@ -144,8 +145,9 @@ let mono = Css.font_family [ "JetBrains Mono"; "ui-monospace"; "monospace" ]
 let raw field value = Css.create ~field ~value
 let text = Vdom.Node.text
 
-(* A subtle text glow used for the green title and section headers. *)
-let glow color = raw "text-shadow" (Printf.sprintf "0 0 8px %s, 0 0 18px %s" color color)
+(* Phosphor glow used for the title, section headers, and status dots. Matches
+   the ported CRT theme's `.glow` (0 0 5px / 0 0 10px). *)
+let glow color = raw "text-shadow" (Printf.sprintf "0 0 5px %s, 0 0 10px %s" color color)
 
 (* Section header: uppercase title in glowing green, followed by a line
    that fills the rest of the row. *)

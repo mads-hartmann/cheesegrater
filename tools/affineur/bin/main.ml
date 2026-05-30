@@ -122,19 +122,72 @@ let index_html =
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
+    /* Retro CRT terminal theme tokens (ported from the Tailwind palette). */
+    :root {
+      --background: oklch(0.08 0.01 240);
+      --foreground: oklch(0.85 0.15 142);
+      --card: oklch(0.12 0.01 240);
+      --card-foreground: oklch(0.85 0.15 142);
+      --primary: oklch(0.75 0.2 142);
+      --primary-foreground: oklch(0.08 0.01 240);
+      --secondary: oklch(0.18 0.01 240);
+      --secondary-foreground: oklch(0.7 0.12 142);
+      --muted: oklch(0.15 0.01 240);
+      --muted-foreground: oklch(0.55 0.08 142);
+      --accent: oklch(0.65 0.18 80);
+      --accent-foreground: oklch(0.08 0.01 240);
+      --destructive: oklch(0.6 0.2 25);
+      --destructive-foreground: oklch(0.95 0 0);
+      --border: oklch(0.25 0.05 142);
+
+      /* Custom retro colors */
+      --terminal-green: oklch(0.75 0.2 142);
+      --terminal-amber: oklch(0.7 0.18 80);
+      --terminal-red: oklch(0.6 0.2 25);
+      --terminal-cyan: oklch(0.7 0.12 200);
+      --scanline: rgba(0, 0, 0, 0.1);
+    }
+
     html, body {
       margin: 0;
-      background: #000000;
-      color: #4ade80;
-      font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: "JetBrains Mono", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       font-size: 15px;
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
     }
+
+    /* CRT scanline overlay */
+    .crt-overlay {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        var(--scanline) 2px,
+        var(--scanline) 4px
+      );
+      z-index: 100;
+    }
+
+    /* Phosphor glow */
+    .glow { text-shadow: 0 0 5px currentColor, 0 0 10px currentColor; }
+    .glow-sm { text-shadow: 0 0 3px currentColor; }
+
+    /* CRT flicker */
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.98; }
+    }
+    .crt-flicker { animation: flicker 0.15s infinite; }
   </style>
 </head>
-<body>
+<body class="crt-flicker">
   <div id="app"></div>
+  <div class="crt-overlay"></div>
   <script src="/main.js"></script>
 </body>
 </html>|}
