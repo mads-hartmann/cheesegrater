@@ -1,3 +1,8 @@
+---
+type: guide
+tags: [maintenance, ops]
+---
+
 # Maintenance
 
 Tips & tricks for maintaining the system

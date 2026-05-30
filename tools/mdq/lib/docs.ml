@@ -18,11 +18,15 @@ type entry_kind =
   | Page
 
 (* An item shown in a directory listing. [path] is the URL the SPA navigates
-   to, not the on-disk path. *)
+   to, not the on-disk path. [type_] and [tags] are the page's frontmatter
+   metadata, shown alongside the title and used for browsing; both are empty
+   for directories and for pages without that frontmatter. *)
 type entry =
   { name : string
   ; path : string
   ; kind : entry_kind
+  ; type_ : string list
+  ; tags : string list
   }
 
 (* The result of resolving a URL path against the configured roots. *)
@@ -41,4 +45,8 @@ type content =
 type t =
   { roots : unit -> root list
   ; resolve : string -> content Deferred.t
+  ; (* List every page whose frontmatter field [key] contains [value] (e.g.
+       [key:"tags" value:"intro"]), across all roots. Returns a listing whose
+       entries carry the matching pages' own type/tags metadata. *)
+    query : key:string -> value:string -> content Deferred.t
   }

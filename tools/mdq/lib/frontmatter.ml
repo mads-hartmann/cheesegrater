@@ -15,12 +15,20 @@ open! Core
    generators. We parse the block into a list of fields and hand the remaining
    markdown body back to the caller untouched. *)
 
-(* A single frontmatter field. [value] is a display string: scalars render as
-   themselves, sequences and mappings are flattened to a compact one-line form
-   so a listing can show them without committing to a nested layout. *)
+(* A single frontmatter field.
+
+   [value] is a display string: scalars render as themselves, sequences and
+   mappings are flattened to a compact one-line form so a listing can show them
+   without committing to a nested layout.
+
+   [items] is the field broken into its individual scalar values: a sequence
+   yields one entry per element, a scalar yields a singleton, and a mapping
+   yields its flattened [k: v] pairs. This is what powers browsing by [tags]
+   and [type] — each item becomes its own queryable, linkable value. *)
 type field =
   { key : string
   ; value : string
+  ; items : string list
   }
 
 type t = field list
@@ -45,11 +53,30 @@ let rec value_to_string (value : Yaml.value) =
       (List.map pairs ~f:(fun (k, v) -> sprintf "%s: %s" k (value_to_string v)))
 ;;
 
+(* Break a YAML value into its individual scalar items. A sequence yields one
+   entry per element; a mapping yields its flattened [k: v] pairs; a scalar
+   yields a singleton (empty values are dropped so a blank field contributes
+   nothing to a query). *)
+let items_of_yaml (value : Yaml.value) : string list =
+  let items =
+    match value with
+    | `A items -> List.map items ~f:value_to_string
+    | `O pairs ->
+      List.map pairs ~f:(fun (k, v) -> sprintf "%s: %s" k (value_to_string v))
+    | scalar -> [ value_to_string scalar ]
+  in
+  List.filter_map items ~f:(fun s ->
+    let s = String.strip s in
+    if String.is_empty s then None else Some s)
+;;
+
 (* Turn a top-level YAML mapping into ordered fields. A non-mapping document
    (e.g. a bare scalar or list) has no named keys, so it yields no fields. *)
 let fields_of_yaml (value : Yaml.value) : t =
   match value with
-  | `O pairs -> List.map pairs ~f:(fun (key, v) -> { key; value = value_to_string v })
+  | `O pairs ->
+    List.map pairs ~f:(fun (key, v) ->
+      { key; value = value_to_string v; items = items_of_yaml v })
   | _ -> []
 ;;
 
@@ -87,4 +114,12 @@ let split md : t * string =
 let find (t : t) ~key =
   List.find_map t ~f:(fun field ->
     if String.equal field.key key then Some field.value else None)
+;;
+
+(* The individual items of a field by key, or [[]] if the field is absent. Used
+   to enumerate a page's [tags] and [type] for browsing. *)
+let items (t : t) ~key =
+  List.find_map t ~f:(fun field ->
+    if String.equal field.key key then Some field.items else None)
+  |> Option.value ~default:[]
 ;;

@@ -1,3 +1,8 @@
+---
+type: reference
+tags: [deployment, ops]
+---
+
 # Deployment
 
 ## How it works

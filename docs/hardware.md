@@ -1,3 +1,8 @@
+---
+type: reference
+tags: [hardware]
+---
+
 # Hardware
 
 This is a Mac Pro from 2009 that I bought used and then upgraded as much as I could - see [specifications](#specifications) and [notes](#notes) below for details.

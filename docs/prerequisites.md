@@ -1,3 +1,8 @@
+---
+type: guide
+tags: [setup, install]
+---
+
 # Prerequisites
 
 ## Generate an SSH key
