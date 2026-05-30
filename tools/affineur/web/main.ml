@@ -67,115 +67,173 @@ module Services_response = struct
   ;;
 end
 
-let fetch_commits =
-  Effect.of_deferred_fun (fun () ->
-    let open Async_kernel in
-    let%map.Deferred result = Async_js.Http.get "/api/commits" in
-    match result with
-    | Error err -> Error (Error.to_string_hum err)
-    | Ok body ->
-      (try Ok (Commits_response.of_json_string body) with
-       | exn -> Error (Exn.to_string exn)))
-;;
+module Mount = struct
+  type t =
+    { mount : string
+    ; size : string
+    ; used : string
+    ; avail : string
+    ; use_percent : int
+    }
 
-let fetch_services =
-  Effect.of_deferred_fun (fun () ->
-    let open Async_kernel in
-    let%map.Deferred result = Async_js.Http.get "/api/services" in
-    match result with
-    | Error err -> Error (Error.to_string_hum err)
-    | Ok body ->
-      (try Ok (Services_response.of_json_string body) with
-       | exn -> Error (Exn.to_string exn)))
-;;
-
-module Style = struct
-  let container =
-    Css_gen.concat
-      [ Css_gen.font_family [ "system-ui"; "sans-serif" ]
-      ; Css_gen.padding ~top:(`Rem 2.) ~left:(`Rem 2.) ~right:(`Rem 2.) ()
-      ; Css_gen.max_width (`Rem 50.)
-      ]
-  ;;
-
-  let subtitle = Css_gen.color (`Name "#666")
-
-  let sha =
-    Css_gen.concat
-      [ Css_gen.font_family [ "monospace" ]
-      ; Css_gen.padding ~right:(`Rem 1.) ()
-      ; Css_gen.color (`Name "#6f42c1")
-      ]
-  ;;
-
-  let table =
-    Css_gen.concat
-      [ Css_gen.border_collapse `Collapse
-      ; Css_gen.create ~field:"width" ~value:"100%"
-      ]
-  ;;
-
-  let row =
-    Css_gen.concat
-      [ Css_gen.padding ~top:(`Px 4) ~bottom:(`Px 4) ()
-      ; Css_gen.create ~field:"border-bottom" ~value:"1px solid #eee"
-      ]
-  ;;
-
-  let service_name =
-    Css_gen.concat
-      [ Css_gen.font_family [ "monospace" ]; Css_gen.padding ~right:(`Rem 1.) () ]
-  ;;
-
-  let muted = Css_gen.color (`Name "#999")
-
-  let badge ~bg ~fg =
-    Css_gen.concat
-      [ Css_gen.create ~field:"display" ~value:"inline-block"
-      ; Css_gen.padding ~top:(`Px 2) ~bottom:(`Px 2) ~left:(`Px 8) ~right:(`Px 8) ()
-      ; Css_gen.create ~field:"border-radius" ~value:"4px"
-      ; Css_gen.create ~field:"font-size" ~value:"0.85rem"
-      ; Css_gen.background_color (`Name bg)
-      ; Css_gen.color (`Name fg)
-      ]
-  ;;
-
-  (* Colour the active-state badge: green for active, grey for inactive,
-     red for failed, amber for anything else. *)
-  let badge_for_active_state = function
-    | "active" -> badge ~bg:"#e6f4ea" ~fg:"#137333"
-    | "inactive" -> badge ~bg:"#f1f3f4" ~fg:"#5f6368"
-    | "failed" -> badge ~bg:"#fce8e6" ~fg:"#c5221f"
-    | _ -> badge ~bg:"#fef7e0" ~fg:"#b06000"
+  let of_json json =
+    let open Yojson.Basic.Util in
+    { mount = json |> member "mount" |> to_string
+    ; size = json |> member "size" |> to_string
+    ; used = json |> member "used" |> to_string
+    ; avail = json |> member "avail" |> to_string
+    ; use_percent = json |> member "use_percent" |> to_int
+    }
   ;;
 end
 
-let error_text msg =
-  Vdom.Node.p
-    ~attrs:[ Vdom.Attr.style (Css_gen.color (`Name "red")) ]
-    [ Vdom.Node.text ("Error: " ^ msg) ]
+module System_response = struct
+  type t =
+    { uptime : string
+    ; cpu_percent : int
+    ; cpu_model : string
+    ; cpu_cores : int
+    ; disks : Mount.t list
+    }
+
+  let of_json_string s =
+    let json = Yojson.Basic.from_string s in
+    let open Yojson.Basic.Util in
+    { uptime = json |> member "uptime" |> to_string
+    ; cpu_percent = json |> member "cpu_percent" |> to_int
+    ; cpu_model = json |> member "cpu_model" |> to_string
+    ; cpu_cores = json |> member "cpu_cores" |> to_int
+    ; disks = json |> member "disks" |> to_list |> List.map ~f:Mount.of_json
+    }
+  ;;
+end
+
+let fetch_json url of_json_string =
+  Effect.of_deferred_fun (fun () ->
+    let open Async_kernel in
+    let%map.Deferred result = Async_js.Http.get url in
+    match result with
+    | Error err -> Error (Error.to_string_hum err)
+    | Ok body ->
+      (try Ok (of_json_string body) with
+       | exn -> Error (Exn.to_string exn)))
 ;;
 
-let loading_text = Vdom.Node.p ~attrs:[ Vdom.Attr.style Style.subtitle ] [ Vdom.Node.text "Loading..." ]
+let fetch_commits = fetch_json "/api/commits" Commits_response.of_json_string
+let fetch_services = fetch_json "/api/services" Services_response.of_json_string
+let fetch_system = fetch_json "/api/system" System_response.of_json_string
 
-let view_commits { Commits_response.last_pulled; commits } =
-  let commit_rows =
-    List.map commits ~f:(fun { Commit.sha; message } ->
-      Vdom.Node.tr
-        ~attrs:[ Vdom.Attr.style Style.row ]
-        [ Vdom.Node.td
-            ~attrs:[ Vdom.Attr.style Style.sha ]
-            [ Vdom.Node.text (String.prefix sha 7) ]
-        ; Vdom.Node.td [ Vdom.Node.text message ]
-        ])
-  in
+(* Terminal palette. The dashboard mimics a dark terminal: green phosphor text
+   on a near-black background, with a few accent colours for state and SHAs. *)
+module Color = struct
+  let green = "#4ade80"
+  let green_bright = "#86efac"
+  let green_dim = "#16a34a"
+  let muted = "#3f6f52"
+  let faint = "#1f3d2b"
+  let teal = "#2dd4bf"
+  let amber = "#d4a017"
+  let red = "#ef4444"
+end
+
+module Css = Css_gen
+
+let style l = Vdom.Attr.style (Css.concat l)
+let s_color c = Css.color (`Name c)
+let mono = Css.font_family [ "JetBrains Mono"; "ui-monospace"; "monospace" ]
+let raw field value = Css.create ~field ~value
+let text = Vdom.Node.text
+
+(* A subtle text glow used for the green title and section headers. *)
+let glow color = raw "text-shadow" (Printf.sprintf "0 0 8px %s, 0 0 18px %s" color color)
+
+(* Section header: uppercase title in glowing green, followed by a line
+   that fills the rest of the row. *)
+let section_header title =
   Vdom.Node.div
-    [ Vdom.Node.p
-        ~attrs:[ Vdom.Attr.style Style.subtitle ]
-        [ Vdom.Node.text ("Last pulled: " ^ last_pulled) ]
-    ; Vdom.Node.h2 [ Vdom.Node.text "Recent commits" ]
-    ; Vdom.Node.table ~attrs:[ Vdom.Attr.style Style.table ] commit_rows
+    ~attrs:
+      [ style
+          [ raw "display" "flex"
+          ; raw "align-items" "center"
+          ; raw "gap" "0.75rem"
+          ; raw "margin" "2.5rem 0 1.5rem 0"
+          ]
+      ]
+    [ Vdom.Node.span
+        ~attrs:
+          [ style
+              [ raw "font-weight" "700"
+              ; raw "font-size" "1.25rem"
+              ; raw "letter-spacing" "0.12em"
+              ; s_color Color.green
+              ; glow Color.green_dim
+              ]
+          ]
+        [ text title ]
     ]
+;;
+
+(* A shell prompt line: a teal/green "$" followed by the dimmed command text. *)
+let prompt_line cmd =
+  Vdom.Node.div
+    ~attrs:[ style [ raw "margin-top" "1.25rem" ] ]
+    [ Vdom.Node.span ~attrs:[ style [ s_color Color.teal ] ] [ text "$ " ]
+    ; Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text cmd ]
+    ]
+;;
+
+(* An ASCII-style progress bar: [ filled-blocks empty-blocks ]. The filled
+   portion glows; the track is rendered with faint block characters. *)
+let progress_bar ~percent ~width_chars =
+  let percent = Int.max 0 (Int.min 100 percent) in
+  let filled = percent * width_chars / 100 in
+  let filled = Int.max (if percent > 0 then 1 else 0) filled in
+  let empty = width_chars - filled in
+  Vdom.Node.span
+    ~attrs:[ style [ raw "white-space" "pre"; raw "letter-spacing" "-1px" ] ]
+    [ Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text "[ " ]
+    ; Vdom.Node.span
+        ~attrs:[ style [ s_color Color.green; glow Color.green_dim ] ]
+        [ text (String.make filled '#') ]
+    ; Vdom.Node.span
+        ~attrs:[ style [ s_color Color.faint ] ]
+        [ text (String.make empty '#') ]
+    ; Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text " ]" ]
+    ]
+;;
+
+let view_header =
+  Vdom.Node.div
+    [ Vdom.Node.h1
+        ~attrs:
+          [ style
+              [ mono
+              ; raw "font-size" "2.25rem"
+              ; raw "font-weight" "700"
+              ; raw "margin" "0.5rem 0 0 0"
+              ; s_color Color.green
+              ; glow Color.green
+              ]
+          ]
+        [ text "cheesegrater" ]
+    ]
+;;
+
+(* Map an active-state to (accent colour, border colour, faint background)
+   used to theme a service card and its status badge. *)
+let service_theme = function
+  | "active" -> Color.green, Color.faint, "rgba(74, 222, 128, 0.04)"
+  | "failed" -> Color.red, "rgba(239, 68, 68, 0.35)", "rgba(239, 68, 68, 0.05)"
+  | "inactive" -> Color.muted, Color.faint, "rgba(255,255,255,0.02)"
+  | _ -> Color.amber, "rgba(212, 160, 23, 0.35)", "rgba(212, 160, 23, 0.05)"
+;;
+
+(* Render the "load: ... · file: ..." detail block on the right of a card,
+   colouring the labels teal and the values dim. *)
+let detail_pair label value =
+  [ Vdom.Node.span ~attrs:[ style [ s_color Color.teal ] ] [ text label ]
+  ; Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text value ]
+  ]
 ;;
 
 let view_service { Service.name
@@ -188,42 +246,234 @@ let view_service { Service.name
                  ; active_since
                  }
   =
-  (* Show the active/sub state together (e.g. "active (running)"), which is the
-     summary systemctl prints at the top of `systemctl status`. *)
+  let accent, border, bg = service_theme active_state in
   let state_label = Printf.sprintf "%s (%s)" active_state sub_state in
-  let detail_bits =
-    List.filter_opt
-      [ (if String.( <> ) main_pid "0" then Some ("PID " ^ main_pid) else None)
-      ; (if String.is_empty active_since then None else Some ("since " ^ active_since))
-      ; Some ("load: " ^ load_state)
-      ; Some ("file: " ^ unit_file_state)
+  (* Left-hand details: PID and "since" when present, joined by separators. *)
+  let pid_since =
+    List.concat
+      [ (if String.( <> ) main_pid "0"
+         then detail_pair "PID " (main_pid ^ "  ")
+         else [])
+      ; (if String.is_empty active_since
+         then []
+         else detail_pair "since " active_since)
       ]
   in
-  Vdom.Node.tr
-    ~attrs:[ Vdom.Attr.style Style.row ]
-    [ Vdom.Node.td
-        ~attrs:[ Vdom.Attr.style Style.service_name ]
-        [ Vdom.Node.div [ Vdom.Node.text name ]
-        ; Vdom.Node.div ~attrs:[ Vdom.Attr.style Style.muted ] [ Vdom.Node.text description ]
+  let details =
+    List.concat
+      [ pid_since
+      ; (if List.is_empty pid_since then [] else [ Vdom.Node.br () ])
+      ; detail_pair "load: " (load_state ^ "  ")
+      ; [ Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text "· " ] ]
+      ; detail_pair "file: " unit_file_state
+      ]
+  in
+  Vdom.Node.div
+    ~attrs:
+      [ style
+          [ raw "display" "flex"
+          ; raw "justify-content" "space-between"
+          ; raw "align-items" "flex-start"
+          ; raw "gap" "1.5rem"
+          ; raw "flex-wrap" "wrap"
+          ; raw "padding" "1.25rem 1.5rem"
+          ; raw "margin-bottom" "1rem"
+          ; raw "border" (Printf.sprintf "1px solid %s" border)
+          ; raw "border-radius" "6px"
+          ; raw "background" bg
+          ]
+      ]
+    [ Vdom.Node.div
+        ~attrs:[ style [ raw "min-width" "16rem" ] ]
+        [ Vdom.Node.div
+            ~attrs:
+              [ style [ raw "display" "flex"; raw "align-items" "center"; raw "gap" "0.6rem" ] ]
+            [ Vdom.Node.span
+                ~attrs:
+                  [ style
+                      [ raw "width" "0.55rem"
+                      ; raw "height" "0.55rem"
+                      ; raw "border-radius" "50%"
+                      ; raw "background" accent
+                      ; glow accent
+                      ]
+                  ]
+                []
+            ; Vdom.Node.span
+                ~attrs:[ style [ raw "font-weight" "700"; s_color Color.green_bright ] ]
+                [ text name ]
+            ]
+        ; Vdom.Node.div
+            ~attrs:[ style [ raw "margin-top" "0.4rem"; s_color Color.muted ] ]
+            [ text description ]
         ]
-    ; Vdom.Node.td
-        [ Vdom.Node.span
-            ~attrs:[ Vdom.Attr.style (Style.badge_for_active_state active_state) ]
-            [ Vdom.Node.text state_label ]
-        ]
-    ; Vdom.Node.td
-        ~attrs:[ Vdom.Attr.style Style.muted ]
-        [ Vdom.Node.text (String.concat ~sep:" · " detail_bits) ]
+    ; Vdom.Node.span
+        ~attrs:
+          [ style
+              [ raw "align-self" "center"
+              ; raw "padding" "0.25rem 0.75rem"
+              ; raw "border" (Printf.sprintf "1px solid %s" accent)
+              ; raw "border-radius" "4px"
+              ; raw "white-space" "nowrap"
+              ; s_color accent
+              ]
+          ]
+        [ text state_label ]
+    ; Vdom.Node.div
+        ~attrs:[ style [ raw "flex" "1"; raw "min-width" "14rem"; raw "align-self" "center" ] ]
+        details
     ]
 ;;
 
 let view_services { Services_response.services } =
-  Vdom.Node.div
-    [ Vdom.Node.h2 [ Vdom.Node.text "Services" ]
-    ; Vdom.Node.table
-        ~attrs:[ Vdom.Attr.style Style.table ]
-        (List.map services ~f:view_service)
+  Vdom.Node.div (List.map services ~f:view_service)
+;;
+
+(* Output line under a prompt, indented and in bright green. *)
+let output_line nodes =
+  Vdom.Node.div ~attrs:[ style [ raw "padding-left" "1.25rem"; raw "margin-top" "0.25rem" ] ] nodes
+;;
+
+let bright s = Vdom.Node.span ~attrs:[ style [ s_color Color.green_bright ] ] [ text s ]
+let dim s = Vdom.Node.span ~attrs:[ style [ s_color Color.muted ] ] [ text s ]
+
+(* A table cell with fixed alignment used by the df table. *)
+let cell ~align ~color s =
+  Vdom.Node.td
+    ~attrs:
+      [ style
+          [ raw "text-align" align
+          ; raw "padding" "0.35rem 0.75rem 0.35rem 0"
+          ; raw "white-space" "nowrap"
+          ; s_color color
+          ]
+      ]
+    [ text s ]
+;;
+
+let view_disk_row { Mount.mount; size; used; avail; use_percent } =
+  Vdom.Node.tr
+    [ cell ~align:"left" ~color:Color.amber ("  " ^ mount)
+    ; cell ~align:"right" ~color:Color.green_bright size
+    ; cell ~align:"right" ~color:Color.green_bright used
+    ; cell ~align:"right" ~color:Color.green_bright avail
+    ; Vdom.Node.td
+        ~attrs:[ style [ raw "padding" "0.35rem 0.75rem 0.35rem 0"; raw "width" "99%" ] ]
+        [ progress_bar ~percent:use_percent ~width_chars:28 ]
+    ; cell ~align:"right" ~color:Color.green_bright (Int.to_string use_percent ^ "%")
     ]
+;;
+
+let header_cell s =
+  Vdom.Node.td
+    ~attrs:
+      [ style
+          [ raw "text-align" "left"
+          ; raw "padding" "0 0.75rem 0.35rem 0"
+          ; raw "letter-spacing" "0.05em"
+          ; s_color Color.muted
+          ]
+      ]
+    [ text s ]
+;;
+
+let view_system { System_response.uptime; cpu_percent; cpu_model; cpu_cores; disks } =
+  let df_header =
+    Vdom.Node.tr
+      [ header_cell "MOUNT"
+      ; Vdom.Node.td ~attrs:[ style [ raw "text-align" "right"; raw "padding-right" "0.75rem"; s_color Color.muted ] ] [ text "SIZE" ]
+      ; Vdom.Node.td ~attrs:[ style [ raw "text-align" "right"; raw "padding-right" "0.75rem"; s_color Color.muted ] ] [ text "USED" ]
+      ; Vdom.Node.td ~attrs:[ style [ raw "text-align" "right"; raw "padding-right" "0.75rem"; s_color Color.muted ] ] [ text "AVAIL" ]
+      ; Vdom.Node.td ~attrs:[ style [ s_color Color.muted ] ] [ text "USE%" ]
+      ; Vdom.Node.td [ text "" ]
+      ]
+  in
+  Vdom.Node.div
+    [ prompt_line "uptime --pretty"
+    ; output_line [ bright uptime ]
+    ; prompt_line "top -bn1 | grep Cpu"
+    ; output_line
+        [ Vdom.Node.span
+            ~attrs:[ style [ s_color Color.green_bright; raw "display" "inline-block"; raw "width" "5rem" ] ]
+            [ text "CPU" ]
+        ; progress_bar ~percent:cpu_percent ~width_chars:28
+        ; Vdom.Node.span
+            ~attrs:[ style [ s_color Color.green_bright; raw "margin-left" "1rem" ] ]
+            [ text (Int.to_string cpu_percent ^ "%") ]
+        ]
+    ; output_line
+        [ dim (Printf.sprintf "%s (%d cores)" cpu_model cpu_cores) ]
+    ; prompt_line "df -h"
+    ; Vdom.Node.div
+        ~attrs:[ style [ raw "padding-left" "1.25rem"; raw "margin-top" "0.5rem" ] ]
+        [ Vdom.Node.table
+            ~attrs:
+              [ style
+                  [ raw "border-collapse" "collapse"
+                  ; raw "width" "100%"
+                  ; mono
+                  ]
+              ]
+            (df_header :: List.map disks ~f:view_disk_row)
+        ]
+    ]
+;;
+
+let view_commits { Commits_response.last_pulled = _; commits } =
+  let commit_row { Commit.sha; message } =
+    Vdom.Node.div
+      ~attrs:
+        [ style
+            [ raw "display" "flex"
+            ; raw "align-items" "baseline"
+            ; raw "gap" "1.5rem"
+            ; raw "padding" "0.6rem 0"
+            ; raw "border-bottom" (Printf.sprintf "1px solid %s" Color.faint)
+            ]
+        ]
+      [ Vdom.Node.span
+          ~attrs:[ style [ raw "font-weight" "700"; raw "min-width" "5rem"; s_color Color.amber ] ]
+          [ text (String.prefix sha 7) ]
+      ; Vdom.Node.span ~attrs:[ style [ s_color Color.green_bright ] ] [ text message ]
+      ]
+  in
+  Vdom.Node.div
+    [ prompt_line "git log --oneline -5"
+    ; Vdom.Node.div
+        ~attrs:[ style [ raw "padding-left" "1.25rem"; raw "margin-top" "0.5rem" ] ]
+        (List.map commits ~f:commit_row)
+    ]
+;;
+
+(* Footer: [ cheesegrater :: home lab status :: nixos ] centred and dimmed,
+   with the first and last words highlighted. *)
+let view_footer =
+  Vdom.Node.div
+    ~attrs:
+      [ style
+          [ raw "text-align" "center"
+          ; raw "margin" "4rem 0 2rem 0"
+          ; s_color Color.muted
+          ]
+      ]
+    [ dim "[ "
+    ; Vdom.Node.span ~attrs:[ style [ raw "font-weight" "700"; s_color Color.green ] ] [ text "cheesegrater" ]
+    ; dim " :: home lab status :: "
+    ; Vdom.Node.span ~attrs:[ style [ raw "font-weight" "700"; s_color Color.green ] ] [ text "nixos" ]
+    ; dim " ]"
+    ]
+;;
+
+let loading_text =
+  Vdom.Node.div
+    ~attrs:[ style [ raw "padding" "0.5rem 0"; s_color Color.muted ] ]
+    [ text "Loading..." ]
+;;
+
+let error_text msg =
+  Vdom.Node.div
+    ~attrs:[ style [ raw "padding" "0.5rem 0"; s_color Color.red ] ]
+    [ text ("Error: " ^ msg) ]
 ;;
 
 let section ~view = function
@@ -234,11 +484,7 @@ let section ~view = function
 
 let fetch_section fetch graph =
   let data, set_data =
-    Bonsai.state
-      None
-      ~sexp_of_model:[%sexp_of: opaque]
-      ~equal:phys_equal
-      graph
+    Bonsai.state None ~sexp_of_model:[%sexp_of: opaque] ~equal:phys_equal graph
   in
   let on_activate =
     let%arr set_data in
@@ -253,12 +499,26 @@ let fetch_section fetch graph =
 let component graph =
   let commits = fetch_section fetch_commits graph in
   let services = fetch_section fetch_services graph in
-  let%arr commits and services in
+  let system = fetch_section fetch_system graph in
+  let%arr commits and services and system in
   Vdom.Node.div
-    ~attrs:[ Vdom.Attr.style Style.container ]
-    [ Vdom.Node.h1 [ Vdom.Node.text "cheesegrater" ]
+    ~attrs:
+      [ style
+          [ mono
+          ; raw "max-width" "56rem"
+          ; raw "margin" "0 auto"
+          ; raw "padding" "3rem 2rem"
+          ; s_color Color.green
+          ]
+      ]
+    [ view_header
+    ; section_header "SERVICES"
     ; section ~view:view_services services
+    ; section_header "SYSTEM RESOURCES"
+    ; section ~view:view_system system
+    ; section_header "RECENT COMMITS"
     ; section ~view:view_commits commits
+    ; view_footer
     ]
 ;;
 

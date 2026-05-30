@@ -15,11 +15,11 @@ let create () : Systemd.t =
            ; active_since = "Thu 2025-05-29 12:00:01 UTC"
            }
          ; { name = "nixos-auto-upgrade.service"
-           ; description = "NixOS auto-upgrade from GitHub releases"
+           ; description = "NixOS auto-upgrade from local checkout of main"
            ; load_state = "loaded"
-           ; active_state = "inactive"
-           ; sub_state = "dead"
-           ; unit_file_state = "static"
+           ; active_state = "failed"
+           ; sub_state = "failed"
+           ; unit_file_state = "linked"
            ; main_pid = "0"
            ; active_since = ""
            }
