@@ -65,6 +65,7 @@
           ./nixos/hardware-configuration.nix
           ./nixos/modules/affineur.nix
           ./nixos/modules/mdq.nix
+          ./nixos/modules/reverse-proxy.nix
         ];
       };
 
