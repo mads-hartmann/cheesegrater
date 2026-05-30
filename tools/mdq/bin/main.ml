@@ -29,6 +29,27 @@ let escape s =
     | c -> String.of_char c)
 ;;
 
+(* The browse URL for a frontmatter [key]/[value] pair, e.g. clicking the
+   [intro] tag goes to [/-/browse?key=tags&value=intro]. The [/-/] prefix is
+   reserved so it never collides with a served folder, and both parts are
+   percent-encoded for safe use in the query string. *)
+let browse_href ~key ~value =
+  sprintf "/-/browse?key=%s&value=%s" (Uri.pct_encode key) (Uri.pct_encode value)
+;;
+
+(* Render a list of frontmatter values as links to their browse pages, e.g. the
+   [tags] field becomes a row of clickable tags. [css_class] selects the pill
+   styling (["tag"] for tags, ["tag type"] to set the [type] apart). *)
+let render_meta_links ~key ~css_class items =
+  List.map items ~f:(fun value ->
+    sprintf
+      {|<a class="%s" href="%s">%s</a>|}
+      css_class
+      (escape (browse_href ~key ~value))
+      (escape value))
+  |> String.concat ~sep:" "
+;;
+
 let style =
   {|
     :root { --fg: #27272a; --muted: #71717a; --accent: #2563eb; --border: #e4e4e7; --bg: #fafafa; --side: #f4f4f5; }
@@ -56,6 +77,11 @@ let style =
     .frontmatter .fm-row { display: flex; gap: 0.5rem; padding: 2px 0; }
     .frontmatter dt { flex: 0 0 8rem; margin: 0; font-weight: 600; color: var(--muted); }
     .frontmatter dd { margin: 0; }
+    .listing li { padding: 6px 0; }
+    .entry-meta { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; margin-left: 0.5rem; vertical-align: middle; }
+    .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--side); border: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; text-decoration: none; line-height: 1.5; }
+    .tag:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+    .tag.type { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
   |}
 ;;
 
@@ -105,11 +131,20 @@ let render_frontmatter (fields : Frontmatter.t) =
   | [] -> ""
   | _ ->
     let rows =
-      List.map fields ~f:(fun { Frontmatter.key; value } ->
+      List.map fields ~f:(fun { Frontmatter.key; value; items } ->
+        (* [type] and [tags] become links to their browse pages so a reader can
+           jump from a document to everything sharing that metadata. Every
+           other field renders as its plain display string. *)
+        let rendered =
+          match key with
+          | "type" -> render_meta_links ~key ~css_class:"tag type" items
+          | "tags" -> render_meta_links ~key ~css_class:"tag" items
+          | _ -> escape value
+        in
         sprintf
           {|<div class="fm-row"><dt>%s</dt><dd>%s</dd></div>|}
           (escape key)
-          (escape value))
+          rendered)
       |> String.concat ~sep:"\n"
     in
     sprintf {|<dl class="frontmatter">%s</dl>|} rows
@@ -117,17 +152,32 @@ let render_frontmatter (fields : Frontmatter.t) =
 
 let render_listing ~title entries =
   let items =
-    List.map entries ~f:(fun { Docs.name; path; kind } ->
+    List.map entries ~f:(fun { Docs.name; path; kind; type_; tags } ->
       let icon =
         match kind with
         | Docs.Dir -> "\xF0\x9F\x93\x81"
         | Docs.Page -> "\xF0\x9F\x93\x84"
       in
+      (* Show the page's type and tags next to its title, each linking to its
+         browse page. Directories carry no metadata, so this is empty for them. *)
+      let type_links = render_meta_links ~key:"type" ~css_class:"tag type" type_ in
+      let tag_links = render_meta_links ~key:"tags" ~css_class:"tag" tags in
+      let meta =
+        match type_links, tag_links with
+        | "", "" -> ""
+        | _ ->
+          sprintf
+            {|<span class="entry-meta">%s</span>|}
+            (String.concat
+               ~sep:" "
+               (List.filter [ type_links; tag_links ] ~f:(Fn.non String.is_empty)))
+      in
       sprintf
-        {|<li><span class="icon">%s</span><a href="%s">%s</a></li>|}
+        {|<li><span class="icon">%s</span><a href="%s">%s</a>%s</li>|}
         icon
         (escape path)
-        (escape name))
+        (escape name)
+        meta)
     |> String.concat ~sep:"\n"
   in
   let body =
@@ -155,12 +205,45 @@ let handle_content (docs : Docs.t) path =
     html_response ~status:`Not_found (page_shell ~title:"Not found" ~roots ~main)
 ;;
 
+(* Browse pages: list every document whose [tags] or [type] frontmatter
+   matches the requested value. The [key]/[value] come from the query string
+   (e.g. [/-/browse?key=tags&value=intro]). An unknown [key] or a missing
+   value yields an empty listing rather than an error. *)
+let handle_browse (docs : Docs.t) uri =
+  let roots = docs.roots () in
+  let param name = Uri.get_query_param uri name in
+  match param "key", param "value" with
+  | Some key, Some value when not (String.is_empty value) ->
+    let%bind content = docs.query ~key ~value in
+    (match content with
+     | Docs.Listing { title; entries } ->
+       let main =
+         match entries with
+         | [] ->
+           sprintf
+             {|<h1>%s</h1><p class="muted">No pages match.</p>|}
+             (escape title)
+         | _ -> render_listing ~title entries
+       in
+       html_response ~status:`OK (page_shell ~title ~roots ~main)
+     | _ ->
+       let main = {|<h1>Not found</h1><p class="muted">No such page.</p>|} in
+       html_response ~status:`Not_found (page_shell ~title:"Not found" ~roots ~main))
+  | _ ->
+    let main =
+      {|<h1>Browse</h1><p class="muted">Provide a <code>key</code> (tags or type) and a <code>value</code>.</p>|}
+    in
+    html_response ~status:`Bad_request (page_shell ~title:"Browse" ~roots ~main)
+;;
+
 let handler docs ~body:_ _sock req =
-  let path = Uri.path (Request.uri req) in
+  let uri = Request.uri req in
+  let path = Uri.path uri in
   match Request.meth req, path with
   | `GET, "/health" -> json_response ~status:`OK {|{"status":"ok"}|}
   | `GET, "/version" ->
     json_response ~status:`OK (Printf.sprintf {|{"version":"%s"}|} version)
+  | `GET, "/-/browse" -> handle_browse docs uri
   | `GET, _ -> handle_content docs path
   | _ -> json_response ~status:`Not_found {|{"error":"not found"}|}
 ;;

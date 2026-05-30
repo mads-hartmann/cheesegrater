@@ -1,3 +1,8 @@
+---
+type: guide
+tags: [setup, install]
+---
+
 # Installation
 
 Instructions for the initial installation and bootstrapping of NixOS on the [hardware](hardware.md), including networking and SSH setup so that any further maintenance can be done from another machine.

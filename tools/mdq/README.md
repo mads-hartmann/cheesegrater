@@ -52,10 +52,26 @@ body. A `title` field, if present, sets the page title (otherwise the title is
 the first `# H1`, then the file name). A malformed or unterminated block is
 left as ordinary markdown rather than failing the page.
 
+### Browsing by type and tags
+
+The `type` and `tags` frontmatter fields are treated specially so a folder of
+markdown can be navigated as a small knowledge base:
+
+- In a **directory listing**, each page shows its `type` and `tags` next to the
+  title as pills.
+- In a **rendered page**, the `type` and `tags` rows in the metadata table are
+  links.
+- Clicking any of these opens a **browse page** (`/-/browse?key=<field>&value=<value>`)
+  listing every page across all served folders whose `type` or `tags` contains
+  that value. Matching is case-insensitive, and list values (`tags: [a, b]`)
+  are matched per element.
+
 ## Endpoints
 
 - `GET /` and any other path — the rendered page or directory listing for that
   URL (a `404` page if nothing resolves)
+- `GET /-/browse?key=<tags|type>&value=<value>` — a listing of every page whose
+  `tags` or `type` frontmatter contains `value`
 - `GET /health` — returns `200 OK` with `{"status":"ok"}`
 - `GET /version` — returns `200 OK` with `{"version":"<version>"}`
 
@@ -66,8 +82,10 @@ left as ordinary markdown rather than failing the page.
   (layout, sidebar, and inline CSS).
 - `lib/` — `docs.ml` defines the content types; `docs_fs.ml` resolves URL
   paths against the configured folders (index heuristic, listings, traversal
-  guard); `markdown.ml` wraps cmarkit; `frontmatter.ml` splits and parses the
-  optional YAML frontmatter block.
+  guard) and walks the tree to answer `type`/`tags` queries; `markdown.ml`
+  wraps cmarkit; `frontmatter.ml` splits and parses the optional YAML
+  frontmatter block, keeping list values as individual items so they can be
+  queried and linked.
 
 If client-side behavior is ever needed, add a separate static script and
 reference it from the page shell in `bin/main.ml`.

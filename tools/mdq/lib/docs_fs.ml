@@ -64,6 +64,16 @@ let join_url base segments =
 
 let strip_md name = String.chop_suffix name ~suffix:".md" |> Option.value ~default:name
 
+(* Read just the frontmatter [type] and [tags] of a markdown file. Used to
+   annotate listing entries and to find pages matching a tag/type query. *)
+let read_meta fs_file =
+  let%map md = Reader.file_contents fs_file in
+  let frontmatter, _body = Frontmatter.split md in
+  let type_ = Frontmatter.items frontmatter ~key:"type" in
+  let tags = Frontmatter.items frontmatter ~key:"tags" in
+  type_, tags
+;;
+
 let render_page ~fallback fs_file =
   let%map md = Reader.file_contents fs_file in
   let frontmatter, body = Frontmatter.split md in
@@ -86,15 +96,29 @@ let render_listing ~(root : Docs.root) ~rel_segments ~title fs_dir =
   let%map entries =
     Deferred.List.filter_map names ~how:`Sequential ~f:(fun name ->
       let child = Filename.concat fs_dir name in
-      match%map Sys.is_directory child with
+      match%bind Sys.is_directory child with
       | `Yes ->
-        Some { Docs.name; path = join_url base_url [ name ]; kind = Docs.Dir }
+        return
+          (Some
+             { Docs.name
+             ; path = join_url base_url [ name ]
+             ; kind = Docs.Dir
+             ; type_ = []
+             ; tags = []
+             })
       | `No | `Unknown ->
         if String.( = ) name index_file || not (String.is_suffix name ~suffix:".md")
-        then None
+        then return None
         else (
           let stem = strip_md name in
-          Some { Docs.name = stem; path = join_url base_url [ stem ]; kind = Docs.Page }))
+          let%map type_, tags = read_meta child in
+          Some
+            { Docs.name = stem
+            ; path = join_url base_url [ stem ]
+            ; kind = Docs.Page
+            ; type_
+            ; tags
+            }))
   in
   Docs.Listing { title; entries }
 ;;
@@ -135,9 +159,81 @@ let resolve_in_root ~(root : Docs.root) ~rel_segments =
 let roots_listing (roots : Docs.root list) =
   let entries =
     List.map roots ~f:(fun root ->
-      { Docs.name = root.Docs.name; path = root.Docs.url_base; kind = Docs.Dir })
+      { Docs.name = root.Docs.name
+      ; path = root.Docs.url_base
+      ; kind = Docs.Dir
+      ; type_ = []
+      ; tags = []
+      })
   in
   Docs.Listing { title = "docs"; entries }
+;;
+
+(* Walk a root's tree and yield an [entry] for every markdown page (index
+   files included), carrying its frontmatter type/tags. Directories are
+   traversed but not themselves emitted — the query view lists pages, not
+   folders. Used to build the tag/type browse pages. *)
+let walk_pages (root : Docs.root) =
+  let rec go ~fs_dir ~rel_segments =
+    match%bind Sys.is_directory fs_dir with
+    | `No | `Unknown -> return []
+    | `Yes ->
+      let%bind names = Sys.ls_dir fs_dir in
+      let names = List.sort names ~compare:String.compare in
+      let%map nested =
+        Deferred.List.map names ~how:`Sequential ~f:(fun name ->
+          let child = Filename.concat fs_dir name in
+          match%bind Sys.is_directory child with
+          | `Yes -> go ~fs_dir:child ~rel_segments:(rel_segments @ [ name ])
+          | `No | `Unknown ->
+            if not (String.is_suffix name ~suffix:".md")
+            then return []
+            else (
+              let%map type_, tags = read_meta child in
+              (* [index.md] represents its directory, so its clean URL is the
+                 directory path; other files drop the [.md] suffix. *)
+              let page_segments =
+                if String.( = ) name index_file
+                then rel_segments
+                else rel_segments @ [ strip_md name ]
+              in
+              let display =
+                match List.last page_segments with
+                | Some s -> s
+                | None -> root.Docs.name
+              in
+              [ { Docs.name = display
+                ; path = join_url root.Docs.url_base page_segments
+                ; kind = Docs.Page
+                ; type_
+                ; tags
+                }
+              ]))
+      in
+      List.concat nested
+  in
+  go ~fs_dir:root.Docs.fs_path ~rel_segments:[]
+;;
+
+(* Collect every page across all roots whose frontmatter field [key] contains
+   [value] (case-insensitively), and present them as a listing. *)
+let query_pages (roots : Docs.root list) ~key ~value =
+  let wanted = String.lowercase (String.strip value) in
+  let%map per_root = Deferred.List.map roots ~how:`Sequential ~f:walk_pages in
+  let entries =
+    List.concat per_root
+    |> List.filter ~f:(fun (entry : Docs.entry) ->
+      let field =
+        match key with
+        | "tags" -> entry.Docs.tags
+        | "type" -> entry.Docs.type_
+        | _ -> []
+      in
+      List.exists field ~f:(fun item ->
+        String.equal (String.lowercase (String.strip item)) wanted))
+  in
+  let title = sprintf "%s: %s" key value in
+  Docs.Listing { title; entries }
 ;;
 
 let create ~paths : Docs.t =
@@ -153,5 +249,6 @@ let create ~paths : Docs.t =
          if List.is_empty segments then return (roots_listing roots) else return Docs.Not_found
        | Some (root, rel_segments) -> resolve_in_root ~root ~rel_segments)
   in
-  { Docs.roots = (fun () -> roots); resolve }
+  let query ~key ~value = query_pages roots ~key ~value in
+  { Docs.roots = (fun () -> roots); resolve; query }
 ;;
