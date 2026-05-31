@@ -66,7 +66,6 @@ in
       environment = {
         PORT = toString cfg.port;
         REPO_PATH = toString cfg.repoPath;
-        JS_PATH = "${affineur}/share/affineur/main.js";
 
         # The service user is not the repo owner, so git's "dubious ownership"
         # check would abort `git log`. Mark the repo as trusted via the

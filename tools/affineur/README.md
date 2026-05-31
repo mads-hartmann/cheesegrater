@@ -2,23 +2,34 @@
 
 > An affineur is a highly skilled specialist who ages and matures cheese from its young, raw state to its peak flavor, texture, and aroma.
 
-An HTTP server built with OCaml using the Jane Street stack (Async, Core, cohttp-async). Serves a [Bonsai](https://github.com/janestreet/bonsai/) SPA dashboard showing recent cheesegrater commits.
+An HTTP server built with OCaml using the Jane Street stack (Async, Core,
+cohttp-async). It serves a server-rendered HTML dashboard for the cheesegrater
+host: systemd service status, system resources, and the most recent commits.
+There is no client-side JavaScript — each request returns a complete page.
 
 ## Endpoints
 
-- `GET /` — Bonsai SPA showing systemd service status, last pull time, and recent commits
-- `GET /api/commits` — JSON with last pull time and the 5 most recent commits
-- `GET /api/services` — JSON with the status of the systemd units deployed by this config (`affineur.service`, `mdq.service`, `nixos-auto-upgrade.service`)
+- `GET /` — the dashboard: systemd service status, system resources (uptime, CPU, disks), and recent commits
 - `GET /health` — returns `200 OK` with `{"status":"ok"}`
 - `GET /version` — returns `200 OK` with `{"version":"<version>"}`
 
 ## Architecture
 
-- `bin/` — Native OCaml server (Async + cohttp-async). Serves the HTML shell, compiled JS, and the JSON API.
-- `lib/` — Data sources behind the API. `git_*` reads commit history; `systemd_*` reads unit status via `systemctl show`. Each has a `real` implementation and a `fake` one (selected with `AFFINEUR_DATA_SOURCE=fake`) for local development.
-- `web/` — Bonsai SPA compiled to JavaScript via js_of_ocaml. Fetches `/api/services` and `/api/commits` on load and renders the dashboard.
+- `bin/` — Native OCaml server (Async + cohttp-async). On each request to `/`
+  it reads the data sources and renders a complete HTML document (layout,
+  inline CSS, and the CRT terminal styling).
+- `lib/` — Data sources behind the dashboard. `git_*` reads commit history;
+  `systemd_*` reads unit status via `systemctl show`; `system_*` reads host
+  resources (uptime, CPU, disks). Each has a `real` implementation and a `fake`
+  one (selected with `AFFINEUR_DATA_SOURCE=fake`) for local development.
 
-The systemd source runs `systemctl show <unit>` for each deployed unit and parses the `Key=Value` output. It reports the basic information systemd exposes: load/active/sub state, unit-file state, main PID, and the active-since timestamp.
+The systemd source runs `systemctl show <unit>` for each deployed unit and
+parses the `Key=Value` output. It reports the basic information systemd
+exposes: load/active/sub state, unit-file state, main PID, and the active-since
+timestamp.
+
+If client-side behavior is ever needed, add a separate static script and
+reference it from the page shell in `bin/main.ml`.
 
 ## Environment variables
 
@@ -26,15 +37,14 @@ The systemd source runs `systemctl show <unit>` for each deployed unit and parse
 |-----------|---------|-------------|
 | `PORT` | `8080` | Port to listen on |
 | `REPO_PATH` | `/etc/nixos` | Path to the cheesegrater git repo |
-| `JS_PATH` | `./main.bc.js` | Path to the compiled Bonsai JS |
+| `AFFINEUR_DATA_SOURCE` | — | Set to `fake` to use built-in sample data |
 
 ## Development
 
 Requires [devenv](https://devenv.sh/).
 
 ```bash
-devenv shell   # enter the dev environment
-dune build     # compile server
-dune build web/main.bc.js  # compile Bonsai frontend
-dune exec bin/main.exe  # run locally
+devenv shell                   # enter the dev environment
+dune build bin/main.exe        # compile the server
+AFFINEUR_DATA_SOURCE=fake dune exec bin/main.exe  # run locally with sample data
 ```
