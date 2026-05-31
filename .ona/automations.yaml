@@ -6,7 +6,15 @@ services:
       start: |
         cd tools/affineur
         ona environment port open --name affineur --dont-wait 8080
-        nix develop .#affineur --command bash -c 'dune build @all && AFFINEUR_DATA_SOURCE=fake PORT=8080 JS_PATH=_build/default/web/main.bc.js dune exec bin/main.exe'
+        # watchexec watches the OCaml SOURCE dirs and owns the build+run: on any
+        # save it rebuilds (@all covers the native exe and the js_of_ocaml
+        # frontend) and restarts the server (-r). Watching source rather than the
+        # built exe avoids the rebuild race where the binary is briefly unlinked.
+        # _build is gitignored, so watchexec never loops on its own output.
+        nix develop .#affineur --command bash -c '
+          exec watchexec -r -w bin -w lib -w web --debounce 500ms -- \
+            "dune build @all && AFFINEUR_DATA_SOURCE=fake PORT=8080 JS_PATH=_build/default/web/main.bc.js exec _build/default/bin/main.exe"
+        '
       ready: curl -sf http://localhost:8080/health
   mdq:
     name: mdq
@@ -15,7 +23,16 @@ services:
       start: |
         cd tools/mdq
         ona environment port open --name mdq --dont-wait 8081
-        nix develop .#mdq --command bash -c 'dune build bin/main.exe && PORT=8081 dune exec bin/main.exe -- ../../docs'
+        # Markdown content is read from disk per request, so editing docs only
+        # needs a browser refresh (no rebuild). watchexec handles OCaml CODE
+        # changes: it watches the source dirs and owns the build+run, rebuilding
+        # and restarting the server (-r) on save. Watching source rather than the
+        # built exe avoids the rebuild race where the binary is briefly unlinked.
+        # _build is gitignored, so watchexec never loops on its own output.
+        nix develop .#mdq --command bash -c '
+          exec watchexec -r -w bin -w lib --debounce 500ms -- \
+            "dune build bin/main.exe && PORT=8081 exec _build/default/bin/main.exe ../../docs"
+        '
       ready: curl -sf http://localhost:8081/health
 
 tasks:
