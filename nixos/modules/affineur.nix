@@ -105,9 +105,12 @@ in
       };
 
       # git: read commit history. systemd: query unit status via systemctl.
+      # procps: `free` (memory) and `uptime`. coreutils: `df` (disks).
       path = [
         pkgs.git
         pkgs.systemd
+        pkgs.procps
+        pkgs.coreutils
       ];
     };
 
