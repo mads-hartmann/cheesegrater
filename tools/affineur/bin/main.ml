@@ -88,7 +88,14 @@ let handle_api_system (source : System.t) =
   let%bind info_result = source.info () in
   match info_result with
   | Error msg -> error_response ~endpoint:"/api/system" msg
-  | Ok { System.uptime; cpu_percent; cpu_model; cpu_cores; disks } ->
+  | Ok { System.uptime
+       ; cpu_percent
+       ; cpu_per_core
+       ; cpu_model
+       ; cpu_cores
+       ; memory
+       ; disks
+       } ->
     let disks_json =
       List.map disks ~f:(fun { System.mount; size; used; avail; use_percent } ->
         `Assoc
@@ -99,12 +106,24 @@ let handle_api_system (source : System.t) =
           ; "use_percent", `Int use_percent
           ])
     in
+    let cpu_per_core_json = List.map cpu_per_core ~f:(fun p -> `Int p) in
+    let { System.total; used; free; use_percent = mem_use_percent } = memory in
+    let memory_json =
+      `Assoc
+        [ "total", `String total
+        ; "used", `String used
+        ; "free", `String free
+        ; "use_percent", `Int mem_use_percent
+        ]
+    in
     let json =
       `Assoc
         [ "uptime", `String uptime
         ; "cpu_percent", `Int cpu_percent
+        ; "cpu_per_core", `List cpu_per_core_json
         ; "cpu_model", `String cpu_model
         ; "cpu_cores", `Int cpu_cores
+        ; "memory", memory_json
         ; "disks", `List disks_json
         ]
     in

@@ -7,8 +7,11 @@ let create () : System.t =
       (Ok
          { System.uptime = "up 14 days, 7 hours, 23 minutes"
          ; cpu_percent = 23
+         ; cpu_per_core = [ 12; 47; 8; 63; 31; 5; 88; 19 ]
          ; cpu_model = "AMD Ryzen 7 5800X"
          ; cpu_cores = 8
+         ; memory =
+             { System.total = "31Gi"; used = "9.4Gi"; free = "18Gi"; use_percent = 31 }
          ; disks =
              [ { System.mount = "/"
                ; size = "256G"
