@@ -10,7 +10,5 @@
     import ./deps.nix pkgs.ocaml-ng.ocamlPackages_5_2
     ++ (with pkgs.ocaml-ng.ocamlPackages_5_2; [
       dune_3
-      js_of_ocaml-compiler
-      ocaml-embed-file
     ]);
 }
