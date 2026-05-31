@@ -19,6 +19,16 @@ services:
       ready: curl -sf http://localhost:8081/health
 
 tasks:
+  warm-up-store:
+    name: Warm up Nix store
+    description: Builds all flake packages and runs the flake check to populate the Nix store (CI-equivalent build).
+    command: |
+      nix flake check
+      nix build .#affineur .#mdq
+    triggeredBy:
+      - prebuild
+      - manual
+
   install-pre-commit-hook:
     name: Install pre-commit hook
     description: Locks the git-hooks.nix flake input and installs the pre-commit hook via nix develop.
