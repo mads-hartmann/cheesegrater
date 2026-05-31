@@ -25,29 +25,32 @@ let read_uptime () =
         | [] -> "unknown"))
 ;;
 
-(* The aggregate CPU line in /proc/stat: "cpu user nice system idle iowait ...".
-   We take two samples a short interval apart and report the percentage of time
-   the CPU was busy between them. *)
-let read_cpu_line () =
+(* The CPU lines in /proc/stat. The first ("cpu ...") is the aggregate; the
+   subsequent ("cpu0", "cpu1", ...) are per logical core. Each line is
+   "user nice system idle iowait ...". We read them as an association list
+   keyed by the cpu label so a single sample captures both the aggregate and
+   every core. *)
+let read_cpu_lines () =
   let%map contents = try_with (fun () -> Reader.file_contents "/proc/stat") in
   match contents with
-  | Error _ -> None
+  | Error _ -> []
   | Ok s ->
     String.split_lines s
-    |> List.find ~f:(fun line -> String.is_prefix line ~prefix:"cpu ")
-    |> Option.bind ~f:(fun line ->
-      let fields =
-        String.split line ~on:' '
-        |> List.filter ~f:(fun f -> not (String.is_empty f))
-      in
-      match fields with
-      | _cpu :: rest ->
-        let nums = List.filter_map rest ~f:Int.of_string_opt in
-        if List.length nums >= 5 then Some nums else None
-      | [] -> None)
+    |> List.filter_map ~f:(fun line ->
+      if not (String.is_prefix line ~prefix:"cpu") then None
+      else (
+        let fields =
+          String.split line ~on:' ' |> List.filter ~f:(fun f -> not (String.is_empty f))
+        in
+        match fields with
+        | label :: rest ->
+          let nums = List.filter_map rest ~f:Int.of_string_opt in
+          if List.length nums >= 5 then Some (label, nums) else None
+        | [] -> None))
 ;;
 
-let read_cpu_percent () =
+(* Busy percentage between two /proc/stat samples for a single cpu line. *)
+let busy_percent first second =
   let totals nums = List.fold nums ~init:0 ~f:( + ) in
   let idle nums =
     (* idle is field 4 (index 3), iowait is field 5 (index 4). *)
@@ -55,19 +58,41 @@ let read_cpu_percent () =
     | _ :: _ :: _ :: idle :: iowait :: _ -> idle + iowait
     | _ -> 0
   in
-  let%bind first = read_cpu_line () in
+  let total_delta = totals second - totals first in
+  let idle_delta = idle second - idle first in
+  if total_delta <= 0
+  then 0
+  else (
+    let busy = total_delta - idle_delta in
+    Int.of_float (Float.round_nearest (100. *. Float.of_int busy /. Float.of_int total_delta)))
+;;
+
+(* Sample /proc/stat twice a short interval apart and report the aggregate busy
+   percentage along with the per-core busy percentages (cpu0, cpu1, ... in
+   order). *)
+let read_cpu_usage () =
+  let%bind first = read_cpu_lines () in
   let%bind () = Clock.after (Time_float.Span.of_ms 200.) in
-  let%map second = read_cpu_line () in
-  match first, second with
-  | Some a, Some b ->
-    let total_delta = totals b - totals a in
-    let idle_delta = idle b - idle a in
-    if total_delta <= 0
-    then 0
-    else (
-      let busy = total_delta - idle_delta in
-      Int.of_float (Float.round_nearest (100. *. Float.of_int busy /. Float.of_int total_delta)))
-  | _ -> 0
+  let%map second = read_cpu_lines () in
+  let lookup label samples = List.Assoc.find samples label ~equal:String.equal in
+  let percent_for label =
+    match lookup label first, lookup label second with
+    | Some a, Some b -> Some (busy_percent a b)
+    | _ -> None
+  in
+  let aggregate = Option.value (percent_for "cpu") ~default:0 in
+  (* Per-core labels are "cpu0", "cpu1", ...; keep only those, sorted by index. *)
+  let core_labels =
+    List.filter_map first ~f:(fun (label, _) ->
+      match String.chop_prefix label ~prefix:"cpu" with
+      | Some idx when not (String.is_empty idx) ->
+        Option.map (Int.of_string_opt idx) ~f:(fun i -> i, label)
+      | _ -> None)
+    |> List.sort ~compare:(fun (a, _) (b, _) -> Int.compare a b)
+    |> List.map ~f:snd
+  in
+  let per_core = List.filter_map core_labels ~f:percent_for in
+  aggregate, per_core
 ;;
 
 let read_cpu_model () =
@@ -140,15 +165,80 @@ let read_disks () =
   | Ok output -> Ok (parse_df output)
 ;;
 
+(* Parse `free -h` output into total/used/free strings and a used percentage.
+   The relevant line begins with "Mem:" and looks like:
+   "Mem: <total> <used> <free> <shared> <buff/cache> <available>".
+   The percentage is derived from total/used parsed via /proc/meminfo, since
+   `free -h` only prints human-readable sizes. *)
+let parse_free output =
+  String.split_lines output
+  |> List.find_map ~f:(fun line ->
+    let fields =
+      String.split line ~on:' ' |> List.filter ~f:(fun f -> not (String.is_empty f))
+    in
+    match fields with
+    | label :: total :: used :: free :: _ when String.equal label "Mem:" ->
+      Some (total, used, free)
+    | _ -> None)
+;;
+
+(* Used-memory percentage from /proc/meminfo: (MemTotal - MemAvailable) /
+   MemTotal. Falls back to 0 when the fields are unavailable. *)
+let read_memory_percent () =
+  let%map contents = try_with (fun () -> Reader.file_contents "/proc/meminfo") in
+  match contents with
+  | Error _ -> 0
+  | Ok s ->
+    let field name =
+      String.split_lines s
+      |> List.find_map ~f:(fun line ->
+        match String.lsplit2 line ~on:':' with
+        | Some (key, value) when String.equal (String.strip key) name ->
+          String.strip value
+          |> String.split ~on:' '
+          |> List.hd
+          |> Option.bind ~f:Int.of_string_opt
+        | _ -> None)
+    in
+    (match field "MemTotal", field "MemAvailable" with
+     | Some total, Some available when total > 0 ->
+       let used = total - available in
+       Int.of_float (Float.round_nearest (100. *. Float.of_int used /. Float.of_int total))
+     | _ -> 0)
+;;
+
+let read_memory () =
+  let%bind result = Process.run ~prog:"free" ~args:[ "-h" ] () in
+  let%map use_percent = read_memory_percent () in
+  match result with
+  | Error err -> Error (Error.to_string_hum err)
+  | Ok output ->
+    (match parse_free output with
+     | Some (total, used, free) ->
+       Ok { System.total; used; free; use_percent }
+     | None -> Error "could not parse free output")
+;;
+
 let create () : System.t =
   let info () =
     let%bind uptime = read_uptime () in
-    let%bind cpu_percent = read_cpu_percent () in
+    let%bind cpu_percent, cpu_per_core = read_cpu_usage () in
     let%bind cpu_model, cpu_cores = read_cpu_model () in
+    let%bind memory_result = read_memory () in
     let%map disks_result = read_disks () in
-    match disks_result with
-    | Error msg -> Error msg
-    | Ok disks -> Ok { System.uptime; cpu_percent; cpu_model; cpu_cores; disks }
+    match memory_result, disks_result with
+    | Error msg, _ -> Error msg
+    | _, Error msg -> Error msg
+    | Ok memory, Ok disks ->
+      Ok
+        { System.uptime
+        ; cpu_percent
+        ; cpu_per_core
+        ; cpu_model
+        ; cpu_cores
+        ; memory
+        ; disks
+        }
   in
   { System.info }
 ;;

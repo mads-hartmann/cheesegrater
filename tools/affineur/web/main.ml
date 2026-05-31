@@ -87,12 +87,32 @@ module Mount = struct
   ;;
 end
 
+module Memory = struct
+  type t =
+    { total : string
+    ; used : string
+    ; free : string
+    ; use_percent : int
+    }
+
+  let of_json json =
+    let open Yojson.Basic.Util in
+    { total = json |> member "total" |> to_string
+    ; used = json |> member "used" |> to_string
+    ; free = json |> member "free" |> to_string
+    ; use_percent = json |> member "use_percent" |> to_int
+    }
+  ;;
+end
+
 module System_response = struct
   type t =
     { uptime : string
     ; cpu_percent : int
+    ; cpu_per_core : int list
     ; cpu_model : string
     ; cpu_cores : int
+    ; memory : Memory.t
     ; disks : Mount.t list
     }
 
@@ -101,8 +121,10 @@ module System_response = struct
     let open Yojson.Basic.Util in
     { uptime = json |> member "uptime" |> to_string
     ; cpu_percent = json |> member "cpu_percent" |> to_int
+    ; cpu_per_core = json |> member "cpu_per_core" |> to_list |> List.map ~f:to_int
     ; cpu_model = json |> member "cpu_model" |> to_string
     ; cpu_cores = json |> member "cpu_cores" |> to_int
+    ; memory = json |> member "memory" |> Memory.of_json
     ; disks = json |> member "disks" |> to_list |> List.map ~f:Mount.of_json
     }
   ;;
@@ -379,7 +401,37 @@ let header_cell s =
     [ text s ]
 ;;
 
-let view_system { System_response.uptime; cpu_percent; cpu_model; cpu_cores; disks } =
+(* A labeled progress-bar row: a fixed-width label, an ASCII bar, and the
+   percentage. Used for the aggregate CPU, each CPU core, and memory so they
+   share the same "graphics". *)
+let labeled_bar ~label ~percent =
+  output_line
+    [ Vdom.Node.span
+        ~attrs:
+          [ style
+              [ s_color Color.green_bright
+              ; raw "display" "inline-block"
+              ; raw "width" "5rem"
+              ]
+          ]
+        [ text label ]
+    ; progress_bar ~percent ~width_chars:28
+    ; Vdom.Node.span
+        ~attrs:[ style [ s_color Color.green_bright; raw "margin-left" "1rem" ] ]
+        [ text (Int.to_string percent ^ "%") ]
+    ]
+;;
+
+let view_system
+  { System_response.uptime
+  ; cpu_percent
+  ; cpu_per_core
+  ; cpu_model
+  ; cpu_cores
+  ; memory
+  ; disks
+  }
+  =
   let df_header =
     Vdom.Node.tr
       [ header_cell "MOUNT"
@@ -390,21 +442,28 @@ let view_system { System_response.uptime; cpu_percent; cpu_model; cpu_cores; dis
       ; Vdom.Node.td [ text "" ]
       ]
   in
+  let per_core_bars =
+    List.mapi cpu_per_core ~f:(fun i percent ->
+      labeled_bar ~label:(Printf.sprintf "cpu%d" i) ~percent)
+  in
+  let mem = memory in
   Vdom.Node.div
     [ prompt_line "uptime --pretty"
     ; output_line [ bright uptime ]
-    ; prompt_line "top -bn1 | grep Cpu"
+    ; prompt_line "top -bn1 (press 1 for per-core)"
+    ; labeled_bar ~label:"CPU" ~percent:cpu_percent
+    ; Vdom.Node.div per_core_bars
+    ; output_line [ dim (Printf.sprintf "%s (%d cores)" cpu_model cpu_cores) ]
+    ; prompt_line "free -h"
+    ; labeled_bar ~label:"MEM" ~percent:mem.Memory.use_percent
     ; output_line
-        [ Vdom.Node.span
-            ~attrs:[ style [ s_color Color.green_bright; raw "display" "inline-block"; raw "width" "5rem" ] ]
-            [ text "CPU" ]
-        ; progress_bar ~percent:cpu_percent ~width_chars:28
-        ; Vdom.Node.span
-            ~attrs:[ style [ s_color Color.green_bright; raw "margin-left" "1rem" ] ]
-            [ text (Int.to_string cpu_percent ^ "%") ]
+        [ dim
+            (Printf.sprintf
+               "%s used / %s total · %s free"
+               mem.Memory.used
+               mem.Memory.total
+               mem.Memory.free)
         ]
-    ; output_line
-        [ dim (Printf.sprintf "%s (%d cores)" cpu_model cpu_cores) ]
     ; prompt_line "df -h"
     ; Vdom.Node.div
         ~attrs:[ style [ raw "padding-left" "1.25rem"; raw "margin-top" "0.5rem" ] ]
