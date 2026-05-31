@@ -87,6 +87,7 @@
           dontDetectOcamlConflicts = true;
           buildInputs =
             import ./tools/affineur/deps.nix ocamlPackages
+            ++ [ pkgs.watchexec ]
             ++ (with ocamlPackages; [
               ocaml
               dune_3
@@ -100,6 +101,7 @@
           dontDetectOcamlConflicts = true;
           buildInputs =
             import ./tools/mdq/deps.nix ocamlPackages
+            ++ [ pkgs.watchexec ]
             ++ (with ocamlPackages; [
               ocaml
               dune_3
