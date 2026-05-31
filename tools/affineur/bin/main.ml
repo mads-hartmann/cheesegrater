@@ -200,6 +200,54 @@ let style =
   |}
 ;;
 
+(* The only client-side JavaScript on the page: a small custom element that
+   periodically refetches a server-rendered HTML fragment and swaps it into
+   place. This keeps rendering on the server (no duplicated markup or styling
+   in JS) while letting individual sections update live.
+
+   Usage: <auto-refresh src="/partials/system" interval="2000">...</auto-refresh>
+   The initial children are the server-rendered fragment, so the section is
+   fully populated before any JS runs and degrades gracefully if JS is off.
+
+   The polling starts in [connectedCallback] and is cleared in
+   [disconnectedCallback], so the timer never outlives the element. A fetch
+   error leaves the previous content in place rather than blanking the section. *)
+let app_js =
+  {|"use strict";
+customElements.define("auto-refresh", class extends HTMLElement {
+  connectedCallback() {
+    const interval = Number(this.getAttribute("interval")) || 2000;
+    this.src = this.getAttribute("src");
+    // Avoid overlapping requests if a fetch is slower than the interval.
+    this.inFlight = false;
+    this.timer = setInterval(() => this.refresh(), interval);
+  }
+  disconnectedCallback() {
+    clearInterval(this.timer);
+  }
+  async refresh() {
+    if (!this.src || this.inFlight) return;
+    this.inFlight = true;
+    try {
+      const res = await fetch(this.src, { headers: { "x-partial": "1" } });
+      if (res.ok) this.innerHTML = await res.text();
+    } catch (_) {
+      // Keep the last good content on transient failures.
+    } finally {
+      this.inFlight = false;
+    }
+  }
+});
+|}
+;;
+
+let js_response ~status body =
+  let headers =
+    Cohttp.Header.of_list [ "content-type", "application/javascript; charset=utf-8" ]
+  in
+  Server.respond_string ~status ~headers body
+;;
+
 let page_shell ~main =
   sprintf
     {|<!DOCTYPE html>
@@ -216,6 +264,7 @@ let page_shell ~main =
 <body class="crt-flicker">
   <div class="page">%s</div>
   <div class="crt-overlay"></div>
+  <script src="/app.js" defer></script>
 </body>
 </html>|}
     style
@@ -387,6 +436,13 @@ let render_system = function
       ]
 ;;
 
+(* The system section's inner HTML, rendered on its own so it can be returned
+   both inside the full page and from the [/partials/system] endpoint that the
+   client polls. *)
+let system_section system_info =
+  String.concat [ section_header "SYSTEM RESOURCES"; render_system system_info ]
+;;
+
 let render_commits = function
   | Error msg -> error_block msg
   | Ok commits ->
@@ -418,8 +474,13 @@ let handle_index (git : Git.t) (systemd : Systemd.t) (system : System.t) =
       [ {|<h1 class="title">cheesegrater</h1>|}
       ; section_header "SERVICES"
       ; render_services services
-      ; section_header "SYSTEM RESOURCES"
-      ; render_system system_info
+      (* System resources refresh live: the <auto-refresh> element polls
+         /partials/system and swaps in the freshly rendered fragment. The
+         initial children are the server-rendered section, so it is populated
+         before any JS runs. *)
+      ; sprintf
+          {|<auto-refresh src="/partials/system" interval="2000">%s</auto-refresh>|}
+          (system_section system_info)
       ; section_header "RECENT COMMITS"
       ; render_commits commits
       ; footer
@@ -428,10 +489,20 @@ let handle_index (git : Git.t) (systemd : Systemd.t) (system : System.t) =
   html_response ~status:`OK (page_shell ~main)
 ;;
 
+(* The system section on its own, polled by the <auto-refresh> element on the
+   page. Returns just the fragment (section header + rendered resources), not a
+   full document. *)
+let handle_partial_system (system : System.t) =
+  let%bind system_info = system.info () in
+  html_response ~status:`OK (system_section system_info)
+;;
+
 let handler git systemd system ~body:_ _sock req =
   let path = Uri.path (Request.uri req) in
   match Request.meth req, path with
   | `GET, "/" -> handle_index git systemd system
+  | `GET, "/app.js" -> js_response ~status:`OK app_js
+  | `GET, "/partials/system" -> handle_partial_system system
   | `GET, "/health" -> json_response ~status:`OK {|{"status":"ok"}|}
   | `GET, "/version" ->
     json_response ~status:`OK (Printf.sprintf {|{"version":"%s"}|} version)
