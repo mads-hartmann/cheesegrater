@@ -125,17 +125,10 @@ let style =
 
     .service {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 1.5rem;
-      flex-wrap: wrap;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.75rem;
     }
-    .service .info { min-width: 16rem; }
-    .service .name-row { display: flex; align-items: center; gap: 0.6rem; }
     .service .dot {
       width: 0.55rem;
       height: 0.55rem;
@@ -143,17 +136,6 @@ let style =
       text-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
     }
     .service .name { font-weight: 700; color: var(--foreground); }
-    .service .desc { margin-top: 0.4rem; color: var(--muted-foreground); }
-    .service .badge {
-      align-self: center;
-      padding: 0.25rem 0.75rem;
-      border: 1px solid currentColor;
-      border-radius: 4px;
-      white-space: nowrap;
-    }
-    .service .details { flex: 1; min-width: 14rem; align-self: center; }
-    .service .details .label { color: var(--terminal-cyan); }
-    .service .details .value { color: var(--muted-foreground); }
 
     .state-active { color: var(--terminal-green); }
     .state-failed { color: var(--terminal-red); }
@@ -164,11 +146,6 @@ let style =
     .dot.state-failed { background: var(--terminal-red); color: var(--terminal-red); }
     .dot.state-inactive { background: var(--muted-foreground); color: var(--muted-foreground); }
     .dot.state-other { background: var(--terminal-amber); color: var(--terminal-amber); }
-
-    .service.bg-active { background: rgba(74, 222, 128, 0.04); }
-    .service.bg-failed { background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.35); }
-    .service.bg-inactive { background: rgba(255, 255, 255, 0.02); }
-    .service.bg-other { background: rgba(212, 160, 23, 0.05); border-color: rgba(212, 160, 23, 0.35); }
 
     .prompt { margin-top: 1.25rem; }
     .prompt .sigil { color: var(--terminal-cyan); }
@@ -186,7 +163,6 @@ let style =
     table.df { border-collapse: collapse; width: 100%; }
     table.df td { padding: 0.35rem 0.75rem 0.35rem 0; white-space: nowrap; }
     table.df td.num { text-align: right; }
-    table.df td.bar-cell { width: 99%; white-space: normal; }
     table.df th {
       text-align: left;
       padding: 0 0.75rem 0.35rem 0;
@@ -322,64 +298,22 @@ let state_class = function
   | _ -> "other"
 ;;
 
-let detail_pair label value =
-  sprintf
-    {|<span class="label">%s</span><span class="value">%s</span>|}
-    (escape label)
-    (escape value)
-;;
-
 let render_service
   { Systemd.name
-  ; description
-  ; load_state
+  ; description = _
+  ; load_state = _
   ; active_state
-  ; sub_state
-  ; unit_file_state
-  ; main_pid
-  ; active_since
+  ; sub_state = _
+  ; unit_file_state = _
+  ; main_pid = _
+  ; active_since = _
   }
   =
   let sc = state_class active_state in
-  let state_label = sprintf "%s (%s)" active_state sub_state in
-  let pid_since =
-    let parts =
-      List.concat
-        [ (if String.( <> ) main_pid "0"
-           then [ detail_pair "PID " (main_pid ^ "  ") ]
-           else [])
-        ; (if String.is_empty active_since
-           then []
-           else [ detail_pair "since " active_since ])
-        ]
-    in
-    String.concat parts
-  in
-  let details =
-    String.concat
-      [ pid_since
-      ; (if String.is_empty pid_since then "" else "<br>")
-      ; detail_pair "load: " (load_state ^ "  ")
-      ; {|<span class="value">· </span>|}
-      ; detail_pair "file: " unit_file_state
-      ]
-  in
   sprintf
-    {|<div class="service bg-%s">
-      <div class="info">
-        <div class="name-row"><span class="dot state-%s"></span><span class="name">%s</span></div>
-        <div class="desc">%s</div>
-      </div>
-      <span class="badge state-%s">%s</span>
-      <div class="details">%s</div>
-    </div>|}
-    sc
+    {|<div class="service"><span class="dot state-%s"></span><span class="name">%s</span></div>|}
     sc
     (escape name)
-    (escape description)
-    sc
-    (escape state_label)
-    details
 ;;
 
 let render_services = function
@@ -389,12 +323,11 @@ let render_services = function
 
 let render_disk_row { System.mount; size; used; avail; use_percent } =
   sprintf
-    {|<tr><td class="dim">  %s</td><td class="num bright">%s</td><td class="num bright">%s</td><td class="num bright">%s</td><td class="bar-cell">%s</td><td class="num bright">%s%%</td></tr>|}
+    {|<tr><td class="dim">  %s</td><td class="num bright">%s</td><td class="num bright">%s</td><td class="num bright">%s</td><td class="num bright">%s%%</td></tr>|}
     (escape mount)
     (escape size)
     (escape used)
     (escape avail)
-    (progress_bar ~percent:use_percent ~width_chars:28)
     (Int.to_string use_percent)
 ;;
 
@@ -420,7 +353,7 @@ let render_system = function
        ; disks
        } ->
     let df_header =
-      {|<tr><th>MOUNT</th><th class="num">SIZE</th><th class="num">USED</th><th class="num">AVAIL</th><th>USE%</th><th></th></tr>|}
+      {|<tr><th>MOUNT</th><th class="num">SIZE</th><th class="num">USED</th><th class="num">AVAIL</th><th class="num">USE%</th></tr>|}
     in
     let rows = String.concat (List.map disks ~f:render_disk_row) in
     let per_core_bars =
