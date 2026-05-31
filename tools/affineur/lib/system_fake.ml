@@ -1,13 +1,26 @@
 open! Core
 open! Async
 
+(* CPU readings wander between calls so the live-refreshing dashboard visibly
+   updates during local development. A random walk (rather than a fresh random
+   value each time) keeps successive readings close, mimicking real CPU load
+   instead of jumping erratically. Each per-core value walks independently. *)
+let walk ref_cell =
+  let delta = Random.int 11 - 5 in
+  ref_cell := Int.max 1 (Int.min 99 (!ref_cell + delta));
+  !ref_cell
+;;
+
+let cpu = ref 23
+let per_core = List.map [ 12; 47; 8; 63; 31; 5; 88; 19 ] ~f:ref
+
 let create () : System.t =
   let info () =
     return
       (Ok
          { System.uptime = "up 14 days, 7 hours, 23 minutes"
-         ; cpu_percent = 23
-         ; cpu_per_core = [ 12; 47; 8; 63; 31; 5; 88; 19 ]
+         ; cpu_percent = walk cpu
+         ; cpu_per_core = List.map per_core ~f:walk
          ; cpu_model = "AMD Ryzen 7 5800X"
          ; cpu_cores = 8
          ; memory =

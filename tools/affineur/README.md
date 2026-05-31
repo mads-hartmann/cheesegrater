@@ -5,11 +5,15 @@
 An HTTP server built with OCaml using the Jane Street stack (Async, Core,
 cohttp-async). It serves a server-rendered HTML dashboard for the cheesegrater
 host: systemd service status, system resources, and the most recent commits.
-There is no client-side JavaScript — each request returns a complete page.
+Rendering happens entirely on the server; the only client-side JavaScript is a
+small custom element that subscribes to a Server-Sent Events stream to update
+the system-resources section live.
 
 ## Endpoints
 
 - `GET /` — the dashboard: systemd service status, system resources (uptime, CPU, disks), and recent commits
+- `GET /app.js` — the `<live-system>` custom element that subscribes to the SSE stream
+- `GET /events/system` — Server-Sent Events stream that pushes the re-rendered system-resources section once per second
 - `GET /health` — returns `200 OK` with `{"status":"ok"}`
 - `GET /version` — returns `200 OK` with `{"version":"<version>"}`
 
@@ -28,8 +32,14 @@ parses the `Key=Value` output. It reports the basic information systemd
 exposes: load/active/sub state, unit-file state, main PID, and the active-since
 timestamp.
 
-If client-side behavior is ever needed, add a separate static script and
-reference it from the page shell in `bin/main.ml`.
+The system-resources section updates live without a page reload. The page wraps
+it in a `<live-system>` custom element (served at `/app.js`) that opens an
+`EventSource` to `/events/system`. The server renders that section every second
+and pushes it down the stream; the element swaps each fragment into place, so
+the embedded UTC clock visibly advances each second. Rendering stays on the
+server — the client only swaps in HTML it receives. The section's initial
+markup is server-rendered, so it is populated before any JS runs and degrades
+gracefully if JavaScript is disabled.
 
 ## Environment variables
 

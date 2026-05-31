@@ -28,6 +28,21 @@ let escape s =
     | c -> String.of_char c)
 ;;
 
+(* Current wall-clock time in UTC, formatted like "2026-05-31 14:03:07 UTC".
+   Rendered into the system section on every SSE tick, so a client watching the
+   stream sees it advance once per second — a visible heartbeat. *)
+let utc_now () =
+  let now = Time_ns.now () in
+  Time_ns.to_string_iso8601_basic now ~zone:Time_float.Zone.utc
+  |> String.substr_replace_all ~pattern:"T" ~with_:" "
+  |> fun s ->
+  (* Drop the sub-second and offset suffix, keep "YYYY-MM-DD HH:MM:SS". *)
+  (match String.lsplit2 s ~on:'.' with
+   | Some (head, _) -> head
+   | None -> s)
+  ^ " UTC"
+;;
+
 (* Retro CRT terminal theme. Ported from the previous Bonsai SPA's HTML shell
    and inline styles so the server-rendered page keeps the same look: green
    phosphor text on a near-black background, scanline overlay, and a few accent
@@ -200,6 +215,54 @@ let style =
   |}
 ;;
 
+(* The only client-side JavaScript on the page: a custom element that subscribes
+   to a Server-Sent Events stream and swaps each pushed HTML fragment into place.
+   Rendering stays on the server (no duplicated markup or styling in JS); the
+   server decides when to push and the client just listens.
+
+   Usage: <live-system src="/events/system">...</live-system>
+   The initial children are the server-rendered fragment, so the section is
+   fully populated before any JS runs and degrades gracefully if JS is off.
+
+   EventSource is opened in [connectedCallback] and closed in
+   [disconnectedCallback], so the connection never outlives the element. It also
+   reconnects automatically on transient network errors, and the last pushed
+   content stays in place until the next message arrives. *)
+let app_js =
+  {|"use strict";
+customElements.define("live-system", class extends HTMLElement {
+  connectedCallback() {
+    const src = this.getAttribute("src");
+    if (!src) return;
+    this.es = new EventSource(src);
+    this.es.onmessage = (e) => { this.innerHTML = e.data; };
+    // On error the browser retries automatically; keep the current content.
+  }
+  disconnectedCallback() {
+    if (this.es) this.es.close();
+  }
+});
+|}
+;;
+
+(* Encode an HTML fragment as the body of a single SSE "message" event. Each
+   line of the payload needs its own "data:" prefix, and a blank line
+   terminates the event. The browser rejoins the data lines with "\n", which is
+   why we split on newlines here. *)
+let sse_event html =
+  let data_lines =
+    String.split_lines html |> List.map ~f:(fun line -> "data: " ^ line)
+  in
+  String.concat ~sep:"\n" data_lines ^ "\n\n"
+;;
+
+let js_response ~status body =
+  let headers =
+    Cohttp.Header.of_list [ "content-type", "application/javascript; charset=utf-8" ]
+  in
+  Server.respond_string ~status ~headers body
+;;
+
 let page_shell ~main =
   sprintf
     {|<!DOCTYPE html>
@@ -216,6 +279,7 @@ let page_shell ~main =
 <body class="crt-flicker">
   <div class="page">%s</div>
   <div class="crt-overlay"></div>
+  <script src="/app.js" defer></script>
 </body>
 </html>|}
     style
@@ -366,7 +430,9 @@ let render_system = function
     in
     let { System.total; used; free; use_percent = mem_use_percent } = memory in
     String.concat
-      [ prompt_line "uptime --pretty"
+      [ prompt_line "date -u"
+      ; sprintf {|<div class="output"><span class="bright">%s</span></div>|} (escape (utc_now ()))
+      ; prompt_line "uptime --pretty"
       ; sprintf {|<div class="output"><span class="bright">%s</span></div>|} (escape uptime)
       ; prompt_line "top -bn1 (press 1 for per-core)"
       ; labeled_bar ~label:"CPU" ~percent:cpu_percent
@@ -385,6 +451,13 @@ let render_system = function
       ; prompt_line "df -h"
       ; sprintf {|<div class="df-wrap"><table class="df">%s%s</table></div>|} df_header rows
       ]
+;;
+
+(* The system section's inner HTML, rendered on its own so it can be returned
+   both inside the full page and from the [/partials/system] endpoint that the
+   client polls. *)
+let system_section system_info =
+  String.concat [ section_header "SYSTEM RESOURCES"; render_system system_info ]
 ;;
 
 let render_commits = function
@@ -418,8 +491,13 @@ let handle_index (git : Git.t) (systemd : Systemd.t) (system : System.t) =
       [ {|<h1 class="title">cheesegrater</h1>|}
       ; section_header "SERVICES"
       ; render_services services
-      ; section_header "SYSTEM RESOURCES"
-      ; render_system system_info
+      (* System resources update live over SSE: the <live-system> element
+         subscribes to /events/system and swaps in each pushed fragment. The
+         initial children are the server-rendered section, so it is populated
+         before any JS runs. *)
+      ; sprintf
+          {|<live-system src="/events/system">%s</live-system>|}
+          (system_section system_info)
       ; section_header "RECENT COMMITS"
       ; render_commits commits
       ; footer
@@ -428,10 +506,49 @@ let handle_index (git : Git.t) (systemd : Systemd.t) (system : System.t) =
   html_response ~status:`OK (page_shell ~main)
 ;;
 
+(* Server-Sent Events stream of the system section. Every second we read the
+   data source, render the section, and push it as one SSE message. The browser
+   swaps it into the <live-system> element, so the embedded UTC clock visibly
+   advances each second.
+
+   The response body is a [Pipe] fed by a background loop. [Pipe.write_if_open]
+   resolves only once the chunk is flushed, which paces the loop to the client:
+   a slow or paused consumer applies backpressure rather than buffering without
+   bound. When the client disconnects the pipe closes, [is_closed] becomes true,
+   and the loop exits, ending the per-connection work. *)
+let handle_events_system (system : System.t) =
+  let headers =
+    Cohttp.Header.of_list
+      [ "content-type", "text/event-stream"
+      ; "cache-control", "no-cache"
+      ; "connection", "keep-alive"
+      ]
+  in
+  let reader, writer = Pipe.create () in
+  (* Producer loop: runs detached from the response so the headers are sent
+     immediately and frames stream as they are produced. *)
+  don't_wait_for
+    (let rec loop () =
+       if Pipe.is_closed writer
+       then return ()
+       else (
+         let%bind system_info = system.info () in
+         let frame = sse_event (system_section system_info) in
+         let%bind () = Pipe.write_if_open writer frame in
+         let%bind () = Clock.after (Time_float.Span.of_sec 1.) in
+         loop ())
+     in
+     let%map () = loop () in
+     Pipe.close writer);
+  Server.respond_with_pipe ~headers reader
+;;
+
 let handler git systemd system ~body:_ _sock req =
   let path = Uri.path (Request.uri req) in
   match Request.meth req, path with
   | `GET, "/" -> handle_index git systemd system
+  | `GET, "/app.js" -> js_response ~status:`OK app_js
+  | `GET, "/events/system" -> handle_events_system system
   | `GET, "/health" -> json_response ~status:`OK {|{"status":"ok"}|}
   | `GET, "/version" ->
     json_response ~status:`OK (Printf.sprintf {|{"version":"%s"}|} version)
